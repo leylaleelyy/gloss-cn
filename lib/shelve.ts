@@ -7,7 +7,7 @@
 
 import { cleanTags, TOPICS, topicOf, type Shelving } from "./library";
 import { EXCERPT_CHARS } from "./excerpt";
-import { completeJSON, DEFAULT_MODEL } from "./together";
+import { completeJSON, DEFAULT_MODEL } from "./ai";
 
 export type ShelveInput = { title: string; author?: string; source?: string; dek?: string; excerpt?: string };
 
@@ -48,5 +48,5 @@ export async function classify(
   if (!r.ok) return r;
   const topic = topicOf(r.data.topic);
   const scene = typeof r.data.scene === "string" ? r.data.scene.replace(/\s+/g, " ").trim().slice(0, 300) : undefined;
-  return { ok: true, shelving: { topic, tags: cleanTags(r.data.tags, topic), scene: scene || undefined }, usd: r.usage.costUsd };
+  return { ok: true, shelving: { topic, tags: cleanTags(r.data.tags, topic), scene: scene || undefined }, usd: r.usage.costUsd ?? 0 };
 }

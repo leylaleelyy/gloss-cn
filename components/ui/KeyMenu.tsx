@@ -2,154 +2,75 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { validateKey } from "@/lib/ask";
-import { BRAND } from "@/lib/brand";
+import { EMPTY_PROVIDER, PROVIDER_STORAGE, normalizeProvider, readProvider, type ProviderConfig } from "@/lib/provider-config";
 import { Popover, barBtn } from "./Popover";
 
-const STORAGE_KEY = "together:api-key";
-
-/** Today's free use of the shared key, as the share still unspent (0 to 1). */
-type Free = { left: number; signedIn: boolean };
-
-/** Bring your own Together key. Stored in this browser only. A little reading a day is free without one. */
 export function KeyMenu() {
-  const [key, setKey] = useState("");
-  const [house, setHouse] = useState<boolean | null>(null);
-  const [free, setFree] = useState<Free | null>(null);
-
+  const [config, setConfig] = useState<ProviderConfig>(EMPTY_PROVIDER);
+  const [appModel, setAppModel] = useState<string | null>(null);
   useEffect(() => {
-    try {
-      setKey(localStorage.getItem(STORAGE_KEY) ?? "");
-    } catch {}
-    fetch("/api/key")
-      .then((r) => r.json())
-      .then((j: { house?: boolean; free?: Free | null }) => {
-        setHouse(Boolean(j.house));
-        setFree(j.free ?? null);
-      })
-      .catch(() => setHouse(false));
-    // Every answer on the shared key reports what is left.
-    const onFree = (e: Event) => setFree((f) => (f ? { ...f, left: (e as CustomEvent<number>).detail } : f));
-    window.addEventListener("gloss:free", onFree);
-    return () => window.removeEventListener("gloss:free", onFree);
+    setConfig(readProvider());
+    fetch("/api/key").then((response) => response.json()).then((data) => setAppModel(data.model || null)).catch(() => {});
   }, []);
-
-  const spent = house === false || free?.left === 0;
-  const status = key ? "Your key" : spent ? "Add a key" : free && free.left <= 0.25 ? "Low on free use" : null;
-
   return (
-    <Popover
-      label="Together API key"
-      tip={key ? "Using your Together key" : "Add your Together key"}
-      width={320}
-      triggerClass={barBtn}
-      openOn="gloss:key"
-      trigger={
-        <>
-          {key ? <span aria-hidden className="size-1.5 rounded-full bg-good" /> : <KeyRound size={15} aria-hidden />}
-          {status && <span className="hidden sm:inline">{status}</span>}
-        </>
-      }
-    >
-      {(close) => <KeyPanel current={key} house={house} free={free} onSave={(v) => setKey(v)} close={close} />}
+    <Popover label="AI settings" tip="Configure your AI provider" width={360} triggerClass={barBtn} openOn="gloss:key"
+      trigger={<><KeyRound size={15} aria-hidden /><span className="hidden sm:inline">AI settings</span></>}>
+      {(close) => <ProviderPanel current={config} appModel={appModel} onSave={setConfig} close={close} />}
     </Popover>
   );
 }
 
-function KeyPanel({ current, house, free, onSave, close }: { current: string; house: boolean | null; free: Free | null; onSave: (v: string) => void; close: () => void }) {
+function ProviderPanel({ current, appModel, onSave, close }: { appModel: string | null; current: ProviderConfig; onSave: (config: ProviderConfig) => void; close: () => void }) {
   const [draft, setDraft] = useState(current);
-  const [state, setState] = useState<"idle" | "checking" | "bad">("idle");
-
-  const save = async () => {
-    const v = draft.trim();
-    if (!v) {
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {}
-      onSave("");
-      close();
-      return;
-    }
-    setState("checking");
-    const ok = await validateKey(v);
-    if (!ok) {
-      setState("bad");
-      return;
-    }
+  const [message, setMessage] = useState("");
+  const [checking, setChecking] = useState(false);
+  const field = (key: keyof ProviderConfig, label: string, placeholder = "", secret = false) => (
+    <label className="mt-3 block text-[12px] text-ink-2">
+      {label}
+      <input aria-label={label} type={secret ? "password" : "text"} value={draft[key]} placeholder={placeholder}
+        autoComplete="off" spellCheck={false} onChange={(event) => { setDraft({ ...draft, [key]: event.target.value }); setMessage(""); }}
+        className="mt-1 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] text-ink outline-none focus:border-rule-strong" />
+    </label>
+  );
+  const save = () => {
     try {
-      localStorage.setItem(STORAGE_KEY, v);
-    } catch {}
-    onSave(v);
-    close();
+      const config = normalizeProvider(draft);
+      localStorage.setItem(PROVIDER_STORAGE, JSON.stringify(config));
+      window.dispatchEvent(new Event("gloss:provider"));
+      onSave(config); close();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save AI settings."); }
   };
-
+  const test = async () => {
+    setChecking(true); setMessage("");
+    try {
+      const config = normalizeProvider(draft);
+      const response = await fetch("/api/key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+      const result = await response.json();
+      setMessage(result.ok ? "Connected. Model capabilities depend on your provider." : result.error || "Could not connect. You can still save if your provider does not support model listing.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not connect."); }
+    finally { setChecking(false); }
+  };
   return (
-    <div>
-      <p className="text-[13.5px] font-medium text-ink">Your Together API key</p>
-      <p className="mt-1 text-[12.5px] leading-snug text-ink-3">
-        {current
-          ? "Answers and reading aloud use your key, with no daily limit."
-          : house && free
-            ? `Free use resets each day${free.signedIn ? "" : ", and signing in doubles it"}. After that, answers need your key. Reading aloud always does.`
-            : "Add your key to start asking."}
-      </p>
-      {!current && house && free && (
-        <div className="mt-3">
-          <div className="flex items-baseline justify-between text-[11.5px] text-ink-3">
-            <span>Free today</span>
-            <span className="tabular-nums">{free.left > 0 ? `${Math.max(1, Math.round(free.left * 100))}% left` : "Used up"}</span>
-          </div>
-          <span className="mt-1.5 block h-[3px] overflow-hidden rounded-full bg-rule" aria-hidden>
-            <span className="block h-full rounded-full bg-[var(--rubric)] transition-[width] duration-500" style={{ width: `${Math.round(free.left * 100)}%` }} />
-          </span>
-        </div>
-      )}
-      <input
-        autoFocus
-        type="password"
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          setState("idle");
-        }}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-        placeholder="tgp_v1_..."
-        autoComplete="off"
-        spellCheck={false}
-        aria-label="Together API key"
-        className="mt-3 h-9 w-full rounded-lg border border-rule bg-bg px-3 text-[13px] tracking-wide text-ink outline-none focus-visible:outline-none placeholder:text-ink-4 focus:border-rule-strong"
-      />
-      {state === "bad" && <p className="mt-2 text-[12.5px] text-rubric-text">Together rejected that key. Check it and try again.</p>}
-      <p className="mt-2 text-[11.5px] leading-snug text-ink-4">Sent with your requests only. Stored in this browser, never on a server, never logged.</p>
-      <div className="mt-3 flex items-center justify-between">
-        <a href={BRAND.keysUrl} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-rubric-text underline decoration-rule-strong underline-offset-4">
-          Get a key on Together
-        </a>
-        <div className="flex gap-1.5">
-          {current && (
-            <button
-              type="button"
-              onClick={() => {
-                setDraft("");
-                try {
-                  localStorage.removeItem(STORAGE_KEY);
-                } catch {}
-                onSave("");
-              }}
-              className="h-8 rounded-lg px-3 text-[12.5px] font-medium text-ink-2 hover:bg-sunk"
-            >
-              Clear
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={save}
-            disabled={state === "checking"}
-            className="h-8 rounded-lg bg-ink px-3.5 text-[12.5px] font-medium text-bg disabled:opacity-60"
-          >
-            {state === "checking" ? "Checking" : "Save"}
-          </button>
-        </div>
+    <div className="max-h-[75vh] overflow-y-auto">
+      <p className="text-[14px] font-medium text-ink">AI provider</p>
+      <p className="mt-1 text-[12px] text-ink-3">Use an OpenAI-compatible API. Reading EPUBs and text PDFs needs no key.</p>
+      {appModel && <p className="mt-2 text-[12px] text-ink-2">{current.baseUrl ? "App default available" : "Connected using app default"}: {appModel}. Clear device settings to use it.</p>}
+      {field("baseUrl", "API base URL", "https://your-provider.example/v1")}
+      {field("model", "Chat model", "Exact model ID")}
+      {field("apiKey", "API key (optional for local servers)", "", true)}
+      <details className="mt-3 text-[12px] text-ink-2">
+        <summary className="cursor-pointer">Vision, voice, and images</summary>
+        {field("visionModel", "Vision model", "Uses chat model if blank")}
+        {field("speechModel", "Speech model", "Required for read aloud")}
+        {field("speechVoice", "Speech voice", "Required for read aloud")}
+        {field("imageModel", "Image model", "Required for painted covers")}
+      </details>
+      <p className="mt-3 text-[11px] text-ink-3">Saved on this device. AI requests send the relevant text or page images to the provider you choose.</p>
+      {message && <p role="status" className="mt-2 text-[12px] text-ink-2">{message}</p>}
+      <div className="mt-3 flex justify-between gap-2">
+        <button type="button" className="text-[12px] text-ink-3" onClick={() => { localStorage.removeItem(PROVIDER_STORAGE); setDraft({ ...EMPTY_PROVIDER }); onSave({ ...EMPTY_PROVIDER }); window.dispatchEvent(new Event("gloss:provider")); setMessage("Device settings cleared."); }}>Clear</button>
+        <button type="button" disabled={checking} className="text-[12px] text-ink-2" onClick={test}>{checking ? "Testing…" : "Test connection"}</button>
+        <button type="button" onClick={save} className="rounded-lg bg-ink px-4 py-2 text-[12px] text-bg">Save</button>
       </div>
     </div>
   );

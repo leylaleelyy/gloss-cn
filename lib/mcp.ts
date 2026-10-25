@@ -212,6 +212,7 @@ async function saveArticles(userId: string, args: Record<string, unknown>, via: 
     let r = html ? await fetchArticle(html) : null;
     if (!r?.ok) r = await fetchArticle(url, { pdf: true });
     if (!r.ok) return { url, status: "failed", reason: r.error };
+    if ("epub" in r) return { url, status: "failed", reason: "Open this EPUB in Gloss to add it to your library." };
     if ("pdf" in r) return { url, status: "failed", reason: "This link is a PDF. Agents can't save PDFs yet; open it in Gloss to read it." };
     const a = r.article;
     if (have.has(normalizeUrl(a.sourceUrl ?? ""))) {

@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * "Read it more carefully": the PDF behind a text, read again by LlamaParse
- * through /api/pdf-careful, for layouts the free reader gets wrong (columns,
- * tables, maths, scans). Needs the reader's own Together key.
+ * "Read it more carefully": the PDF behind a text, read again by the configured vision model
+ * through /api/pdf-page, for layouts the free reader gets wrong (columns,
+ * tables, maths, scans). No page cap; the provider must support images.
  */
 
 import { markdownBlocks, wordCount, type Article } from "./article";
-import { readApiKey } from "./ask";
-import { htmlTablesToMarkdown, stitchBlocks } from "./pdf";
+import { providerHeaders } from "./provider-config";
+import { htmlTablesToMarkdown, stitchBlocks, pdfPageCount, renderPages } from "./pdf";
 import { loadDoc, loadPdf, useStore } from "./store";
 
 export type CarefulResult = { ok: true; article: Article } | { ok: false; error: string; needKey?: boolean };
@@ -20,26 +20,31 @@ export async function readCarefully(shown: Article, signal?: AbortSignal): Promi
   const article = (await loadDoc(shown.id)) ?? shown;
   const pdf = await loadPdf(article.id);
   if (!pdf) return { ok: false, error: "The PDF is not on this device. Open it again from the file to read it carefully." };
-  const key = readApiKey();
-  if (!key) return { ok: false, error: "Reading carefully needs your Together key.", needKey: true };
-
-  const form = new FormData();
-  form.append("file", pdf, "document.pdf");
-  let j: { pages?: string[]; truncated?: boolean; error?: string; code?: string };
-  let status = 0;
+  const bytes = new Uint8Array(await pdf.arrayBuffer());
+  const pages: string[] = [];
   try {
-    const res = await fetch("/api/pdf-careful", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, signal });
-    status = res.status;
-    j = await res.json();
-  } catch (e) {
-    if (signal?.aborted) return { ok: false, error: "Stopped." };
-    return { ok: false, error: `Connection lost: ${String(e)}` };
+    const count = await pdfPageCount(bytes);
+    for (let page = 1; page <= count; page += 3) {
+      if (signal?.aborted) return { ok: false, error: "Stopped." };
+      const numbers = Array.from({ length: Math.min(3, count - page + 1) }, (_, i) => page + i);
+      const shots = await renderPages(bytes, numbers);
+      if (shots.length !== numbers.length) return { ok: false, error: "Some pages could not be rendered. The text is unchanged." };
+      const batch = await Promise.all(shots.sort((a, b) => a.pageNum - b.pageNum).map(async (shot) => {
+        const response = await fetch("/api/pdf-page", {
+          method: "POST", headers: { "Content-Type": "application/json", ...providerHeaders() },
+          body: JSON.stringify({ image: shot.image, mode: "layout" }), signal,
+        });
+        const result = await response.json();
+        if (!response.ok || !result.markdown?.trim()) throw new Error(result.error || `Page ${shot.pageNum} could not be read. The text is unchanged.`);
+        return result.markdown as string;
+      }));
+      pages.push(...batch);
+    }
+  } catch (error) {
+    return { ok: false, error: signal?.aborted ? "Stopped." : error instanceof Error ? error.message : "Could not read the PDF. The text is unchanged." };
   }
-  if (status !== 200 || !j.pages) return { ok: false, error: j.error ?? `Request failed (${status}).`, needKey: j.code === "need_key" };
-  // A partial reading would drop the rest of the text, so it does not replace anything.
-  if (j.truncated) return { ok: false, error: "This PDF is too long to read carefully in one go (over 60 pages)." };
 
-  let blocks = stitchBlocks(j.pages.flatMap((md) => markdownBlocks(htmlTablesToMarkdown(md))));
+  let blocks = stitchBlocks(pages.flatMap((md) => markdownBlocks(htmlTablesToMarkdown(md))));
   // The title is already shown above the text.
   if (blocks[0] && (blocks[0].type === "h2" || blocks[0].type === "h3") && same(blocks[0].runs.map((r) => r.text).join(""), article.title)) blocks = blocks.slice(1);
   if (!blocks.some((b) => b.type === "p")) return { ok: false, error: "The careful reading came back empty. The text is unchanged." };

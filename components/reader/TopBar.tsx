@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, NotebookPen } from "lucide-react";
+import { BookOpenText, Keyboard, NotebookPen } from "lucide-react";
 import { Account } from "@/components/account/Account";
 import { Lockup } from "@/components/brand/Gloss";
 import { KeyMenu } from "@/components/ui/KeyMenu";
@@ -122,6 +123,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
             </button>
           </span>
           <ListenButton from={listenFrom} />
+          <Link href="/vocabulary" className={`${barBtn} !px-3 gap-2`} title="Vocabulary" aria-label="Vocabulary"><BookOpenText size={17} aria-hidden /><span className="hidden sm:inline">Vocabulary</span></Link>
           <SettingsMenu />
           <KeyMenu />
           <button

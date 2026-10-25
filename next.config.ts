@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  ...(process.env.GLOSS_DESKTOP === "1" ? { output: "standalone", distDir: ".next-desktop" } as const : {}),
   serverExternalPackages: ["linkedom"],
   poweredByHeader: false,
   async headers() {

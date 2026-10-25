@@ -1,16 +1,16 @@
 "use client";
 
-import { SignInButton } from "@clerk/nextjs";
+import { SignInButton } from "@/components/account/Auth";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, BookmarkPlus, Check, Copy, Loader2, Plus, Trash2, X } from "lucide-react";
-import { importFromUrl, keep, looksLikeUrl } from "@/lib/import";
+import { importFromUrl, importFromFile, keep, looksLikeUrl } from "@/lib/import";
 import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
 import { Mark, MarkStack, type AgentMark } from "./AgentMarks";
 import { Glyph } from "./Book";
 
-export type AddTab = "links" | "agent";
+export type AddTab = "links" | "agent" | "files";
 
 /**
  * Adding to the library: paste links (one or many), or connect an agent that
@@ -45,12 +45,13 @@ export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab
             <button type="button" role="tab" aria-selected={tab === "links"} aria-checked={tab === "links"} onClick={() => onTab("links")}>
               Save links manually
             </button>
+            <button type="button" role="tab" aria-selected={tab === "files"} onClick={() => onTab("files")}>Open files</button>
           </div>
           <button type="button" aria-label="Close" data-tip="Close" data-tip-kbd="Esc" onClick={onClose} className="grid size-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
             <X size={17} />
           </button>
         </header>
-        {tab === "links" ? <Links /> : <Agent signedIn={signedIn} />}
+        {tab === "files" ? <Files /> : tab === "links" ? <Links /> : <Agent signedIn={signedIn} />}
       </section>
     </div>,
     document.body
@@ -68,7 +69,7 @@ export function AddButton({ onClick, compact }: { onClick: () => void; compact?:
       <MarkStack size={compact ? 22 : 26} />
       <span className="min-w-0 text-left">
         <span className="lib-add-title">Add articles</span>
-        {!compact && <span className="lib-add-sub">Connect an agent, or paste links</span>}
+        {!compact && <span className="lib-add-sub">Open EPUB or PDF, paste links, or connect an agent</span>}
       </span>
       {!compact && (
         <span className="lib-add-plus" aria-hidden>
@@ -147,7 +148,7 @@ function Links() {
     <div className="mt-5">
       <p className="text-[19px] font-serif leading-tight text-ink">Save links to your library</p>
       <p className="mt-1 text-[13px] text-ink-3">
-        One or many, a line each. Gloss reads each page in and sorts it onto a topic. PDFs work too. Leaving Pocket, Instapaper or Raindrop?{" "}
+        One or many, a line each. Gloss reads each page in and sorts it onto a topic. EPUB and PDF links work too. Leaving Pocket, Instapaper or Raindrop?{" "}
         <button type="button" onClick={() => fileRef.current?.click()} className="text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink">
           Drop its export here
         </button>
@@ -430,6 +431,39 @@ function CopyBlock({ title, body, text }: { title: string; body: string; text: s
         </button>
       </div>
       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-sunk px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-2">{text}</pre>
+    </div>
+  );
+}
+
+
+function Files() {
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [results, setResults] = useState<string[]>([]);
+  const pending = useRef(false);
+  const open = async (files: File[]) => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true); setResults([]);
+    try {
+      for (const file of files) {
+        setProgress(`Opening ${file.name}`);
+        const result = await importFromFile(file, (_, label) => setProgress(`${file.name}: ${label || "Reading…"}`));
+        const error = result.ok ? await keep(result.article, result.file) : result.error;
+        setResults((items) => [...items, error ? `${file.name}: ${error}` : `Saved ${result.ok ? result.article.title : file.name}`]);
+      }
+    } finally { pending.current = false; setBusy(false); setProgress(""); }
+  };
+  return (
+    <div className="mt-6" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void open(Array.from(event.dataTransfer.files)); }}>
+      <p className="text-sm text-ink-2">Open or drop EPUB, PDF, text, or Markdown files. Books are saved to your library for reading and annotation.</p>
+      <input className="mt-5 block w-full text-sm" aria-label="Choose books or documents" type="file" multiple disabled={busy}
+        accept=".epub,.pdf,.txt,.md,.markdown,application/epub+zip,application/pdf,text/plain,text/markdown"
+        onChange={(event) => { const files = Array.from(event.target.files || []); event.target.value = ""; void open(files); }} />
+      <div role="status" className="mt-4 space-y-2 text-sm text-ink-2">
+        {progress && <p>{progress}</p>}
+        {results.map((result, index) => <p key={index}>{result}</p>)}
+      </div>
     </div>
   );
 }

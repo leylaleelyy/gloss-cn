@@ -1,3 +1,4 @@
+import type { ResponseLanguage } from "./response-language";
 import type { ModelKey } from "./models";
 
 /** Highlighter colours. */
@@ -28,6 +29,7 @@ export type Settings = {
   align: "left" | "justify";
   paras: "spaced" | "indented";
   marker: Marker;
+  responseLanguage: ResponseLanguage;
   length: "short" | "normal" | "long";
   model: ModelKey;
   /**
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   align: "left",
   paras: "spaced",
   marker: "yellow",
+  responseLanguage: "zh-CN",
   length: "normal",
   model: "flash",
   search: true,
@@ -103,4 +106,4 @@ export function applySettings(s: Settings) {
  * The same thing as applySettings, as an inline script for <head>, so the
  * first paint already has the reader's theme, pen and type. Kept in sync by hand.
  */
-export const BOOT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${SETTINGS_KEY}")||"{}"),e=document.documentElement,t=s.theme||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"night":"paper";e.dataset.theme=t;e.dataset.pen=s.pen||"vermilion";e.dataset.face=s.face||"serif";e.dataset.align=s.align||"left";e.dataset.paras=s.paras||"spaced";if(s.size)e.style.setProperty("--read-size",s.size+"px");var L={tight:1.5,normal:1.64,loose:1.82},M={narrow:28,normal:32,wide:37};if(s.leading)e.style.setProperty("--leading",L[s.leading]);if(s.width)e.style.setProperty("--measure-k",M[s.width])}catch(x){}`;
+export const BOOT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${SETTINGS_KEY}")||"{}"),e=document.documentElement,t=s.theme||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"night":"paper";e.dataset.webkit=window.nsh?"true":"false";e.dataset.theme=t;e.dataset.pen=s.pen||"vermilion";e.dataset.face=s.face||"serif";e.dataset.align=s.align||"left";e.dataset.paras=s.paras||"spaced";if(s.size)e.style.setProperty("--read-size",s.size+"px");var L={tight:1.5,normal:1.64,loose:1.82},M={narrow:28,normal:32,wide:37};if(s.leading)e.style.setProperty("--leading",L[s.leading]);if(s.width)e.style.setProperty("--measure-k",M[s.width])}catch(x){}`;

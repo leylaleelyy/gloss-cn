@@ -3,6 +3,8 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { AlignJustify, AlignLeft, Focus, Headphones, Map as MapIcon, Minus, Paintbrush, Pilcrow, Plus, RotateCcw } from "lucide-react";
+import { LearningPreferences } from "@/components/reader/LearningPreferences";
+import { RESPONSE_LANGUAGES, responseLanguage } from "@/lib/response-language";
 import { MODELS, type ModelKey } from "@/lib/models";
 import { applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
@@ -139,7 +141,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   const pickTheme = (key: Settings["theme"], e: MouseEvent<HTMLButtonElement>) => {
     const doc = document as Document & { startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void>; skipTransition: () => void } };
     const quiet = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!doc.startViewTransition || quiet || resolveTheme(key) === resolveTheme(settings.theme)) return set({ theme: key });
+    if ("nsh" in window || !doc.startViewTransition || quiet || resolveTheme(key) === resolveTheme(settings.theme)) return set({ theme: key });
     // In percentages of the viewport, so the circle lands on the swatch at any zoom or pixel ratio.
     const r = e.currentTarget.getBoundingClientRect();
     const w = window.innerWidth;
@@ -385,6 +387,12 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && tab === "answers" && (
             <div className="space-y-4">
               <div>
+                <label className="mb-2 block text-[12.5px] text-ink-3" htmlFor="response-language">Response language · 回答语言</label>
+                <select id="response-language" value={responseLanguage(settings.responseLanguage)} onChange={(e) => set({ responseLanguage: responseLanguage(e.target.value) })} className="mb-2 h-9 w-full rounded-[10px] border border-rule bg-sunk px-2 text-[13px] text-ink">
+                  {RESPONSE_LANGUAGES.map((language) => <option key={language.key} value={language.key}>{language.label}</option>)}
+                </select>
+                <p className="mb-4 text-[12px] leading-snug text-ink-4">Applies to new answers, learning cards and summaries. Existing notes keep their language.</p>
+                <LearningPreferences />
                 <p className="mb-2 text-[12.5px] text-ink-3">Answer length</p>
                 <Seg
                   label="Answer length"

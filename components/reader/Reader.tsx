@@ -8,7 +8,6 @@ import { displayArticle, isHeading, readingMinutes, titleClass, type Article } f
 import { ARTICLE_QUESTIONS } from "@/lib/actions";
 import { SAMPLE_QUESTIONS } from "@/lib/samples";
 import { fetchBrief } from "@/lib/ask";
-import { BRAND } from "@/lib/brand";
 import { indexArticle } from "@/lib/doc";
 import { fetchText } from "@/lib/sync";
 import { loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
@@ -28,6 +27,7 @@ import { Notebook } from "./Notebook";
 import { Peek, Shortcuts, Toast } from "./Overlays";
 import { Rail } from "./Rail";
 import { TopBar } from "./TopBar";
+import { VocabularyHighlights } from "./VocabularyHighlights";
 
 export function Reader({ id, initial }: { id: string; initial: Article | null }) {
   const [article, setArticle] = useState<Article | null>(initial);
@@ -197,7 +197,7 @@ function ReaderInner({ article }: { article: Article }) {
       }
     };
     for (const h of highlights) place(h.anchor, "hl", h.id, h.color, Boolean(h.note));
-    for (const g of glosses) if (g.anchor) place(g.anchor, "gloss", g.id);
+    for (const g of glosses) if (g.anchor) place(g.anchor, "gloss", g.id, g.action === "simplify" ? "analysis" : g.action === "define" ? "dictionary" : undefined);
     if (pending) place(pending, "pending", "pending");
     return map;
   }, [glosses, highlights, pending, ix, article.blocks]);
@@ -234,26 +234,33 @@ function ReaderInner({ article }: { article: Article }) {
     if (!articleEl) return;
     let raf = 0;
     let saveT: ReturnType<typeof setTimeout> | null = null;
-    const blocks = () => Array.from(articleEl.querySelectorAll<HTMLElement>("[data-block]"));
+    const all = Array.from(articleEl.querySelectorAll<HTMLElement>("[data-block]"));
+    let readCount = 0;
     const measure = () => {
       raf = 0;
       const line = window.innerHeight * 0.32;
       // Focus mode keeps the whole screen in full ink and lets a paragraph recede once it is
       // read: once its last line has scrolled up into the top fifth of the window.
       const readLine = focusMode ? window.innerHeight * 0.2 : -Infinity;
-      const all = blocks();
-      let cur: HTMLElement | null = null;
-      for (const el of all) {
-        const r = el.getBoundingClientRect();
-        if (r.top <= line) cur = el;
-        // A data attribute rather than a class, so a re-render of the block leaves it alone.
-        if (r.bottom < readLine) el.dataset.read = "";
-        else delete el.dataset.read;
-        if (r.top > window.innerHeight) {
-          if (focusMode) continue;
-          break;
+      // Blocks follow document order. Locate the reading line without measuring
+      // every preceding paragraph on each scroll frame (important for full books).
+      const before = (boundary: number, bottom = false) => {
+        let low = 0, high = all.length;
+        while (low < high) {
+          const mid = (low + high) >>> 1;
+          const rect = all[mid].getBoundingClientRect();
+          if ((bottom ? rect.bottom : rect.top) < boundary) low = mid + 1;
+          else high = mid;
         }
+        return low;
+      };
+      const cur = all[Math.max(0, before(line) - 1)];
+      const nextRead = focusMode ? before(readLine, true) : 0;
+      for (let i = Math.min(readCount, nextRead); i < Math.max(readCount, nextRead); i++) {
+        if (i < nextRead) all[i].dataset.read = "";
+        else delete all[i].dataset.read;
       }
+      readCount = nextRead;
       const id = (cur ?? all[0])?.dataset.block ?? null;
       setPastTitle(articleEl.getBoundingClientRect().top < 120);
       if (id !== currentRef.current) {
@@ -281,6 +288,7 @@ function ReaderInner({ article }: { article: Article }) {
       window.removeEventListener("resize", on);
       if (raf) cancelAnimationFrame(raf);
       if (saveT) clearTimeout(saveT);
+      for (const el of all) delete el.dataset.read;
     };
   }, [articleEl, articleId, setProgress, setUI, ix, article.blocks.length, focusMode]);
 
@@ -290,6 +298,11 @@ function ReaderInner({ article }: { article: Article }) {
     if (!hydrated || !articleEl || resumed.current) return;
     resumed.current = true;
     // Opened from a link to one highlight (the home page's daily one): go there, not to where you left off.
+    const sourceBlock = new URLSearchParams(window.location.search).get("block");
+    if (sourceBlock && ix.order.has(sourceBlock)) {
+      const url = new URL(window.location.href); url.searchParams.delete("block"); window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      requestAnimationFrame(() => jumpToBlock(sourceBlock, { flash: false })); return;
+    }
     const hlId = new URLSearchParams(window.location.search).get("hl");
     const hl = hlId ? (useStore.getState().highlights[articleId] ?? []).find((h) => h.id === hlId) : undefined;
     if (hlId) window.history.replaceState(null, "", window.location.pathname);
@@ -394,6 +407,7 @@ function ReaderInner({ article }: { article: Article }) {
     };
 
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
           e.preventDefault();
@@ -557,11 +571,7 @@ function ReaderInner({ article }: { article: Article }) {
                 </p>
                 {article.source && <p>From {article.source}.</p>}
                 <p className="mt-1">
-                  Glosses are powered by DeepSeek V4.1 Flash, served by{" "}
-                  <a href={BRAND.togetherUrl} target="_blank" rel="noopener noreferrer" className="text-ink-2 underline decoration-rule-strong underline-offset-4 hover:text-ink">
-                    Together AI
-                  </a>
-                  .
+                  AI answers use the provider and model you choose in AI settings.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-2">
                   <button type="button" onClick={() => setUI({ notebookOpen: true })} className="h-9 rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
@@ -591,6 +601,7 @@ function ReaderInner({ article }: { article: Article }) {
         )}
 
         <Lens rootEl={articleEl} openHighlight={openHl} />
+        <VocabularyHighlights root={articleEl} />
         <ListenBar />
         <SignInNudge />
         <Notebook />

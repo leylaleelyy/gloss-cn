@@ -13,6 +13,7 @@ export async function POST(req: Request) {
   }
   const r = await fetchArticle(body.url ?? "", { pdf: Boolean(body.pdf) });
   if (!r.ok) return Response.json({ error: r.error }, { status: r.status });
+  if ("epub" in r) return new Response(r.epub, { headers: { "Content-Type": "application/epub+zip", "X-File-Name": encodeURIComponent(r.name) } });
   if ("pdf" in r) return new Response(r.pdf, { headers: { "Content-Type": "application/pdf", "X-File-Name": encodeURIComponent(r.name) } });
   return Response.json({ article: r.article });
 }

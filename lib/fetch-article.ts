@@ -11,7 +11,7 @@ import { imageStem, leadImage, prepareImages } from "@/lib/images";
 import { Readability } from "@mozilla/readability";
 import { htmlToBlocks } from "@/lib/html-to-blocks";
 import { slugify, tidyTitle, undash, type Article, type Block } from "@/lib/article";
-import { APP_UA } from "@/lib/together";
+import { APP_UA } from "@/lib/ai";
 
 const MAX_BYTES = 6_000_000;
 const MAX_PDF_BYTES = 25_000_000;
@@ -143,6 +143,7 @@ export function arxivFullText(url: string, as: "pdf" | "html"): string | null {
 export type FetchResult =
   | { ok: true; article: Article }
   | { ok: true; pdf: ArrayBuffer; name: string }
+  | { ok: true; epub: ArrayBuffer; name: string }
   | { ok: false; error: string; status: number };
 
 /** `pdf`: the caller can read a PDF itself, so a PDF link comes back as the file instead of an error. */
@@ -163,7 +164,7 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
         signal: AbortSignal.timeout(15_000),
         headers: {
           "User-Agent": `Mozilla/5.0 (compatible; ${APP_UA}; +reader)`,
-          Accept: opts.pdf ? "text/html,application/xhtml+xml,application/pdf" : "text/html,application/xhtml+xml",
+          Accept: opts.pdf ? "text/html,application/xhtml+xml,application/pdf,application/epub+zip" : "text/html,application/xhtml+xml",
         },
       });
       const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
@@ -187,6 +188,13 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
   }
 
   const type = res.headers.get("content-type") ?? "";
+  if (type.includes("application/epub+zip") || /\.epub$/i.test(target.pathname)) {
+    if (!opts.pdf) return { ok: false, error: "Download this EPUB and open it in Gloss.", status: 415 };
+    const epub = await res.arrayBuffer();
+    if (epub.byteLength > MAX_PDF_BYTES) return { ok: false, error: "That EPUB is too large to fetch here. Download it and open the local file instead.", status: 413 };
+    const name = decodeURIComponent(target.pathname.split("/").pop() || "book.epub");
+    return { ok: true, epub, name: name.toLowerCase().endsWith(".epub") ? name : `${name}.epub` };
+  }
   if (type.includes("application/pdf") && opts.pdf) {
     const pdf = await res.arrayBuffer();
     if (pdf.byteLength > MAX_PDF_BYTES) return { ok: false, error: "That PDF is too large to import.", status: 413 };

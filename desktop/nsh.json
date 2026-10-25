@@ -1,0 +1,10 @@
+{
+  "name": "Gloss",
+  "id": "io.usegloss.desktop",
+  "version": "0.1.0",
+  "build": 1,
+  "icon": "icon.png",
+  "capabilities": {
+    "webview": { "hosts": ["127.0.0.1"] }
+  }
+}

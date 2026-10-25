@@ -1,5 +1,8 @@
 "use client";
 
+import { providerHeaders } from "@/lib/provider-config";
+
+import { countPdfPages, openCompletePdf } from "./pdf-session";
 import type { LayoutBlock } from "@llamaindex/liteparse-wasm";
 import { inlineMd, markdownBlocks, slugify, tidyTitle, undash, type Article, type Block } from "./article";
 import { readApiKey } from "./ask";
@@ -14,18 +17,12 @@ import { readApiKey } from "./ask";
  *    glyphs) are rendered and read by a vision model on the server
  *    (/api/pdf-page), a few at a time.
  *
- * Longer PDFs need the reader's own Together key: every question sends the
- * whole text, so a book would spend a day's free use in a few questions.
  */
 
-export const PDF_FREE_PAGES = 20;
-export const PDF_MAX_PAGES = 400;
 const WASM = "/liteparse-2.15.1.wasm";
 /** The complexity reasons that mean the text layer is missing or unusable. Others ("vector-text") are noise for prose. */
 const UNREADABLE = new Set(["scanned", "no-text", "garbled"]);
 const VISION_AT_ONCE = 6;
-/** At most this many hard pages per PDF are read again in the background. */
-const UPGRADE_MAX = 30;
 /** Maths symbols, and the private-use or replacement characters of glyphs the text layer could not map. */
 const MATHS = /[∑∏∫√≤≥≠≈∂∇∈∉⊂±×÷→⇒∞αβγδεζηθλμσφψωΓΔΘΛΣΦΨΩ]/g;
 const BROKEN = /[\ufffd\ue000-\uf8ff]/g;
@@ -57,24 +54,17 @@ function liteparse(): Promise<LP> {
 const failed = (e: unknown) =>
   new PdfError(/password/i.test(String(e)) ? "This PDF is password protected. Remove the password and try again." : "Could not read this PDF.");
 
+/** Read metadata without allowing the parser's default page cap to truncate imports. */
+export async function pdfPageCount(bytes: Uint8Array): Promise<number> {
+  return countPdfPages(await liteparse(), bytes);
+}
+
 export async function pdfToArticle(file: File, onProgress?: PdfProgress): Promise<Article> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const lp = await liteparse();
-  const parser = new lp.LiteParse({ ocrEnabled: false, outputFormat: "json", extractBlocks: true, imageMode: "off", quiet: true, maxPages: PDF_MAX_PAGES });
-
-  let session: Awaited<ReturnType<typeof parser.openBatchSession>>;
-  try {
-    session = await parser.openBatchSession(bytes, 25);
-  } catch (e) {
-    throw failed(e);
-  }
-  const total = session.totalPages;
-  const pages = Math.min(total, PDF_MAX_PAGES);
+  const { parser, session, total } = await openCompletePdf(lp, bytes).catch((error) => { throw failed(error); });
+  const pages = total;
   const label = `${pages} page${pages === 1 ? "" : "s"}`;
-  if (pages > PDF_FREE_PAGES && !readApiKey()) {
-    session.free();
-    throw new PdfError(`This PDF has ${pages} pages. PDFs over ${PDF_FREE_PAGES} pages use your own Together key, since every question sends the whole text.`, true);
-  }
 
   // Pass 1: the text layer, a batch at a time.
   onProgress?.(0, `Reading ${label}`);
@@ -85,6 +75,7 @@ export async function pdfToArticle(file: File, onProgress?: PdfProgress): Promis
       onProgress?.(b.endPage / pages, `Reading ${label}`);
     }
   } catch (e) {
+    parser.free();
     throw failed(e);
   } finally {
     session.free();
@@ -114,7 +105,7 @@ export async function pdfToArticle(file: File, onProgress?: PdfProgress): Promis
     )
       hard.push(p);
   }
-  hard = hard.filter((p) => p <= pages).sort((a, b) => a - b).slice(0, UPGRADE_MAX);
+  hard = hard.filter((p) => p <= pages).sort((a, b) => a - b);
   parser.free();
   const vision = new Map<number, Block[]>();
   if (unreadable.length) await readByVision(lp, bytes, unreadable, vision, onProgress);
@@ -153,7 +144,7 @@ export async function pdfToArticle(file: File, onProgress?: PdfProgress): Promis
   return {
     id: `${slugify(title)}-${Math.random().toString(36).slice(2, 7)}`,
     title: tidyTitle(undash(title)),
-    source: `${file.name}${total > PDF_MAX_PAGES ? `, first ${PDF_MAX_PAGES} pages` : ""}`,
+    source: file.name,
     blocks,
     origin: "file",
     addedAt: Date.now(),
@@ -164,7 +155,7 @@ export async function pdfToArticle(file: File, onProgress?: PdfProgress): Promis
 /** Pages of a PDF rendered as JPEG data URLs, the way the vision model reads them. */
 export async function renderPages(bytes: Uint8Array, pageNums: number[]): Promise<{ pageNum: number; image: string }[]> {
   const lp = await liteparse();
-  const shooter = new lp.LiteParse({ ocrEnabled: false, outputFormat: "json", imageMode: "off", quiet: true, extractScreenshots: true, targetPages: pageNums.join(","), dpi: 120 });
+  const shooter = new lp.LiteParse({ ocrEnabled: false, outputFormat: "json", imageMode: "off", quiet: true, extractScreenshots: true, maxPages: pageNums.reduce((max, page) => Math.max(max, page), 1), targetPages: pageNums.join(","), dpi: 120 });
   try {
     const shots = (await shooter.parse(bytes)).screenshots;
     return await Promise.all(shots.map(async (s) => ({ pageNum: s.pageNum, image: await pageImage(new Uint8Array(s.imageBytes)) })));
@@ -269,7 +260,7 @@ async function readByVision(lp: LP, bytes: Uint8Array, pageNums: number[], into:
 
   for (let i = 0; i < pageNums.length && !stop; i += VISION_AT_ONCE) {
     const group = pageNums.slice(i, i + VISION_AT_ONCE);
-    const shooter = new lp.LiteParse({ ocrEnabled: false, outputFormat: "json", imageMode: "off", quiet: true, extractScreenshots: true, targetPages: group.join(","), dpi: 120 });
+    const shooter = new lp.LiteParse({ ocrEnabled: false, outputFormat: "json", imageMode: "off", quiet: true, extractScreenshots: true, maxPages: group.reduce((max, page) => Math.max(max, page), 1), targetPages: group.join(","), dpi: 120 });
     let shots: { pageNum: number; imageBytes: number[] }[] = [];
     try {
       shots = (await shooter.parse(bytes)).screenshots;
@@ -281,20 +272,21 @@ async function readByVision(lp: LP, bytes: Uint8Array, pageNums: number[], into:
         try {
           const res = await fetch("/api/pdf-page", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...providerHeaders() },
             body: JSON.stringify({ image: await pageImage(new Uint8Array(s.imageBytes)), apiKey }),
           });
           const j = (await res.json()) as { markdown?: string; error?: string; code?: string };
           if (j.markdown) into.set(s.pageNum, markdownBlocks(htmlTablesToMarkdown(j.markdown)));
-          else if (j.code === "need_key") stop = new PdfError(j.error ?? "Add your Together key to read scanned pages.", true);
+          else if (j.code === "need_key") stop = new PdfError(j.error ?? "Add your AI provider settings to read scanned pages.", true);
         } catch {}
         done++;
         onProgress?.(done / pageNums.length, label());
       })
     );
   }
-  // Out of free use with nothing read at all: say so, rather than an empty text.
-  if (stop && !into.size) throw stop;
+  // Never silently import a partial scan when any page failed.
+  if (stop) throw stop;
+  if (pageNums.some((page) => !into.has(page))) throw new PdfError("Some scanned pages could not be read. Check your vision model and retry; the PDF has not been imported partially.");
 }
 
 /**

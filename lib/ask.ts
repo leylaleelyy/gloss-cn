@@ -1,5 +1,9 @@
 "use client";
 
+import { providerHeaders } from "@/lib/provider-config";
+
+import { analysis, analysisText, definition, definitionText } from "./learning";
+import { hydrateLearning, useLearning } from "./learning-store";
 import type { Action } from "./actions";
 import type { BriefData } from "./article";
 import { docPayload, type DocIndex } from "./doc";
@@ -7,21 +11,14 @@ import { uid, useStore, type Anchor, type Gloss, type Turn } from "./store";
 import type { ModelKey, StreamEvent, Usage } from "./models";
 import { MODELS, modelOf } from "./models";
 
-const KEY_STORAGE = "together:api-key";
+import { readProvider } from "./provider-config";
 
-export function readApiKey(): string {
-  try {
-    return localStorage.getItem(KEY_STORAGE) ?? "";
-  } catch {
-    return "";
-  }
-}
+export function readApiKey(): string { return readProvider().apiKey; }
 
 const controllers = new Map<string, AbortController>();
 
 export function stopGloss(id: string) {
   controllers.get(id)?.abort();
-  controllers.delete(id);
 }
 
 function lastAssistant(g: Gloss, fn: (t: Turn) => Turn): Gloss {
@@ -42,9 +39,13 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
   const g = (st.glosses[articleId] ?? []).find((x) => x.id === glossId);
   if (!g) return;
 
+  if ((g.action === "simplify" || g.action === "define") && g.anchor && g.turns.length === 1) {
+    await learnSelection(ix, g); return;
+  }
+
   // History after the first answer: alternating user/assistant, ending with the new user turn.
   const history = g.turns
-    .slice(1, -1)
+    .slice((g.turns[0]?.analysis || g.turns[0]?.definition) ? 0 : 1, -1)
     .filter((t) => !t.error)
     .map((t) => ({ role: t.role, content: t.content }));
 
@@ -54,18 +55,19 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
 
   const ctrl = new AbortController();
   controllers.set(glossId, ctrl);
-  const update = (fn: (t: Turn) => Turn) => useStore.getState().updateGloss(articleId, glossId, (x) => lastAssistant(x, fn));
+  const update = (fn: (t: Turn) => Turn) => { if (controllers.get(glossId) === ctrl) useStore.getState().updateGloss(articleId, glossId, (x) => lastAssistant(x, fn)); };
 
   try {
     const apiKey = readApiKey();
     const res = await fetch("/api/ask", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
       signal: ctrl.signal,
       body: JSON.stringify({
         apiKey: apiKey || undefined,
         model: modelKey,
         length: st.settings.length,
+        responseLanguage: st.settings.responseLanguage,
         doc: docPayload(ix, g.anchor?.start.b ?? g.at),
         thread: { action: g.action, quote: g.anchor?.quote, from, to, at, question: g.question },
         history,
@@ -128,9 +130,49 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
     if (ctrl.signal.aborted) update((t) => ({ ...t, streaming: false, error: t.content ? undefined : "Stopped." }));
     else update((t) => ({ ...t, streaming: false, error: `Connection lost: ${String(err)}` }));
   } finally {
-    controllers.delete(glossId);
     update((t) => ({ ...t, streaming: false, searching: false }));
+    if (controllers.get(glossId) === ctrl) controllers.delete(glossId);
   }
+}
+
+/** Structured learning uses the same persistent card lifecycle as Explain. */
+async function learnSelection(ix: DocIndex, g: Gloss) {
+  const ctrl = new AbortController();
+  controllers.set(g.id, ctrl);
+  const update = (fn: (t: Turn) => Turn) => {
+    if (controllers.get(g.id) === ctrl) useStore.getState().updateGloss(g.articleId, g.id, x => lastAssistant(x, fn));
+  };
+  try {
+    await hydrateLearning();
+    if (ctrl.signal.aborted) return;
+    const anchor = g.anchor!;
+    const text = ix.texts.get(anchor.start.b) ?? anchor.quote;
+    const response = await fetch("/api/learn", {
+      method: "POST", headers: { "Content-Type": "application/json", ...providerHeaders() },
+      signal: AbortSignal.any([ctrl.signal, AbortSignal.timeout(120000)]),
+      body: JSON.stringify({ mode: g.action === "define" ? "dictionary" : "sentence", text: anchor.quote, context: text.slice(Math.max(0, anchor.start.o - 3000), anchor.start.o + 8000), preferences: useLearning.getState().preferences, language: useStore.getState().settings.responseLanguage }),
+    });
+    const result = await response.json();
+    if (!response.ok || result.error) throw new Error(result.error || "Could not read the selection.");
+    const answer = g.action === "define"
+      ? (() => { const data = definition(result.data); return { definition: data, content: definitionText(data) }; })()
+      : (() => { const data = analysis(result.data); return { analysis: data, content: analysisText(data) }; })();
+    update(t => ({ ...t, ...answer, streaming: false, model: readProvider().model || "Reading tutor" }));
+  } catch (e) {
+    update(t => ({ ...t, streaming: false, error: ctrl.signal.aborted ? "Stopped." : e instanceof Error ? e.message : "Could not read the selection." }));
+  } finally {
+    update(t => ({ ...t, streaming: false }));
+    if (controllers.get(g.id) === ctrl) controllers.delete(g.id);
+  }
+}
+
+/** Reuse the other interpretation of this exact anchor, or create it independently. */
+export function openRelatedGloss(ix: DocIndex, gloss: Gloss, action: "explain" | "simplify" | "define") {
+  if (!gloss.anchor) return;
+  const a = gloss.anchor;
+  const existing = (useStore.getState().glosses[ix.article.id] ?? []).find(g => g.action === action && g.anchor?.start.b === a.start.b && g.anchor.start.o === a.start.o && g.anchor.end.b === a.end.b && g.anchor.end.o === a.end.o && g.anchor.quote === a.quote);
+  if (existing) useStore.getState().setUI({ activeGloss: existing.id, activeHighlight: null, focusMode: false });
+  else startGloss(ix, { anchor: a, action });
 }
 
 export function startGloss(
@@ -189,8 +231,8 @@ export async function fetchBrief(ix: DocIndex) {
     const apiKey = readApiKey();
     const res = await fetch("/api/brief", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: apiKey || undefined, model: modelKey, doc: docPayload(ix) }),
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
+      body: JSON.stringify({ apiKey: apiKey || undefined, model: modelKey, responseLanguage: useStore.getState().settings.responseLanguage, doc: docPayload(ix) }),
     });
     noteFree(res);
     const j = (await res.json()) as { brief?: BriefData; usage?: Usage; error?: string; code?: string };
@@ -224,7 +266,7 @@ export function openKeyMenu() {
 
 export async function validateKey(key: string): Promise<boolean> {
   try {
-    const res = await fetch("/api/key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey: key }) });
+    const res = await fetch("/api/key", { method: "POST", headers: { "Content-Type": "application/json", ...providerHeaders() }, body: JSON.stringify({ apiKey: key }) });
     return ((await res.json()) as { ok?: boolean }).ok === true;
   } catch {
     return false;
@@ -245,9 +287,9 @@ export async function streamAsk(
     const apiKey = readApiKey();
     const res = await fetch("/api/ask", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
       signal,
-      body: JSON.stringify({ ...body, apiKey: apiKey || undefined, model: modelOf(useStore.getState().settings.model) }),
+      body: JSON.stringify({ ...body, responseLanguage: useStore.getState().settings.responseLanguage, apiKey: apiKey || undefined, model: modelOf(useStore.getState().settings.model) }),
     });
     noteFree(res);
     if (!res.ok || !res.body) {

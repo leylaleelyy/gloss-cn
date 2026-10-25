@@ -4,16 +4,17 @@ import { textToArticle, wordCount, type Article } from "./article";
 import { shelveText } from "./shelving";
 import { savePdf, saveDoc, useStore, type LibraryItem } from "./store";
 
-/** `needKey`: the import needs the reader's own Together key (a long PDF, or free use spent). `file`: the original, kept with a PDF. */
+/** `needKey`: the import needs the reader's AI provider configuration for scanned pages. `file`: the original, kept with a PDF. */
 export type ImportResult = { ok: true; article: Article; file?: Blob } | { ok: false; error: string; needKey?: boolean };
 
 /** A link to a PDF is fetched by the server and read here, as if the file had been dropped. */
 export async function importFromUrl(raw: string, onProgress?: (p: number, label?: string) => void): Promise<ImportResult> {
   try {
     const res = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: raw.trim(), pdf: true }) });
-    if (res.ok && res.headers.get("content-type")?.includes("application/pdf")) {
-      const name = decodeURIComponent(res.headers.get("x-file-name") ?? "document.pdf");
-      const r = await importFromFile(new File([await res.blob()], name, { type: "application/pdf" }), onProgress);
+    const mime = res.headers.get("content-type")?.split(";")[0];
+    if (res.ok && (mime === "application/pdf" || mime === "application/epub+zip")) {
+      const name = decodeURIComponent(res.headers.get("x-file-name") ?? (mime === "application/epub+zip" ? "book.epub" : "document.pdf"));
+      const r = await importFromFile(new File([await res.blob()], name, { type: mime }), onProgress);
       if (r.ok) r.article.sourceUrl ??= raw.trim();
       return r;
     }
@@ -27,6 +28,10 @@ export async function importFromUrl(raw: string, onProgress?: (p: number, label?
 export async function importFromFile(file: File, onProgress?: (p: number, label?: string) => void): Promise<ImportResult> {
   const name = file.name.toLowerCase();
   try {
+    if (name.endsWith(".epub") || file.type === "application/epub+zip") {
+      const { epubToArticle } = await import("./epub");
+      return { ok: true, article: await epubToArticle(file, onProgress) };
+    }
     if (name.endsWith(".pdf") || file.type === "application/pdf") {
       const { pdfToArticle, PdfError } = await import("./pdf");
       try {
@@ -42,7 +47,7 @@ export async function importFromFile(file: File, onProgress?: (p: number, label?
       a.source = file.name;
       return { ok: true, article: a };
     }
-    return { ok: false, error: "Gloss reads PDF, .txt and .md files." };
+    return { ok: false, error: "Gloss reads EPUB, PDF, .txt and .md files." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not read that file." };
   }

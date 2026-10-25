@@ -85,6 +85,7 @@ export function BookOpen({
   const look = lookOf(book);
   const t = TOPIC[book.topic];
   const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const desktop = typeof window !== "undefined" && "nsh" in window;
   const shift = g.wide ? g.W / 2 : 0;
   const coverZ = `translateZ(${g.D / 2}px)`;
 
@@ -99,11 +100,18 @@ export function BookOpen({
 
   useLayoutEffect(() => {
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
-    if (reduce) {
+    if (reduce || desktop) {
       b.style.transform = T(0, 0, 1, -g.D / 2, 0);
       c.style.transform = `${coverZ} rotateY(-180deg)`;
       s.style.transform = `translateX(${shift}px)`;
       setPhase("open");
+      if (!reduce) {
+        const entrance = s.animate(
+          [{ opacity: 0, transform: `translateX(${shift}px) translateY(12px)` }, { opacity: 1, transform: `translateX(${shift}px) translateY(0)` }],
+          { duration: 180, easing: ease }
+        );
+        return () => entrance.cancel();
+      }
       return;
     }
     const fly = b.animate(flight(g, origin), { duration: origin.kind === "spine" ? 840 : 660, fill: "forwards" });
@@ -127,6 +135,12 @@ export function BookOpen({
     setPhase("out");
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
     if (reduce) return onClose();
+    if (desktop) {
+      const exit = s.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: "forwards" });
+      await exit.finished.catch(() => {});
+      onClose();
+      return;
+    }
     const opts: KeyframeAnimationOptions = { duration: 540, easing: easeInOut, fill: "forwards" };
     c.getAnimations().forEach((a) => a.commitStyles?.());
     c.animate([{ transform: `${coverZ} rotateY(-180deg)` }, { transform: `${coverZ} rotateY(0deg)` }], opts);
@@ -139,7 +153,7 @@ export function BookOpen({
     const fly = b.animate(back, { duration: origin.kind === "spine" ? 760 : 600, delay: 360, fill: "forwards" });
     await fly.finished.catch(() => {});
     onClose();
-  }, [book, coverZ, onClose, origin, reduce, shift]);
+  }, [book, coverZ, onClose, origin, reduce, desktop, shift]);
 
   useEffect(() => {
     if (phase === "open") readRef.current?.focus({ preventScroll: true });
@@ -163,7 +177,7 @@ export function BookOpen({
 
   const read = () => {
     setPhase("leaving");
-    setTimeout(() => onRead(book), reduce ? 0 : 360);
+    setTimeout(() => onRead(book), reduce || desktop ? 0 : 360);
   };
 
   const reading = book.pct > 0 && book.pct < 1;

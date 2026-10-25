@@ -32,6 +32,6 @@ export function useMedia(query: string, fallback = false): boolean {
   return match;
 }
 
-export const fmtCost = (usd: number) => (usd < 0.0001 ? "<$0.0001" : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(3)}`);
+export const fmtCost = (usd: number | null) => (usd === null ? "Cost set by provider" : usd < 0.0001 ? "<$0.0001" : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(3)}`);
 
 export const fmtTokens = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString("en-US"));

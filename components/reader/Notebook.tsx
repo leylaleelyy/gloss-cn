@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Show, SignInButton } from "@clerk/nextjs";
+import { Show, SignInButton } from "@/components/account/Auth";
 import { Check, Copy, Download, Trash2, X } from "lucide-react";
 import { GlossMark } from "@/components/brand/Gloss";
 import { cmp } from "@/lib/anchor";
@@ -214,7 +214,7 @@ function GlossEntry({ g }: { g: Gloss }) {
   };
 
   return (
-    <article className="group relative rounded-[14px] border border-rule bg-bg px-4 pb-4 pt-3.5 transition-colors hover:border-rule-strong">
+    <article data-action={g.action} className="notebook-gloss group relative rounded-[14px] border border-rule bg-bg px-4 pb-4 pt-3.5 transition-colors hover:border-rule-strong">
       <button type="button" onClick={go} className="block w-full pr-7 text-left">
         <Meta n={n} label={label} at={g.createdAt} />
         {g.anchor && (

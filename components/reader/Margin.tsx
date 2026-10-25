@@ -1,48 +1,19 @@
 "use client";
 
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { anchorToRange, blockEl } from "@/lib/anchor";
 import { MARKERS } from "@/lib/settings";
 import { useStore, type Gloss, type Highlight } from "@/lib/store";
 import { GlossCard, marginStyle } from "./GlossCard";
 
-/** Room between notes; one-line notes in a crowded stretch sit close, like a list. */
-const GAP = 16;
-const GAP_MINI = 4;
-/** Notes whose passages start closer than this are a crowd. */
+import { placeMargin, type MarginItem } from "@/lib/margin-layout";
+
 const CROWD = 88;
-
-type Item = { id: string; desired: number; anchorY: number; h: number; created: number; mini: boolean };
 type Layout = { tops: Record<string, number>; anchors: Record<string, number>; mini: Record<string, boolean>; height: number; hintTop: number };
-
-const gapAfter = (a: Item, b: Item) => (a.mini && b.mini ? GAP_MINI : GAP);
-
-/**
- * Places glosses beside their passages. The active gloss sits exactly at its
- * anchor; the rest stack away from it in both directions without overlapping,
- * the way comments settle in a well-made editor.
- */
-function place(items: Item[], activeId: string | null): Record<string, number> {
-  const tops: number[] = items.map((it) => it.desired);
-  const ai = activeId ? items.findIndex((it) => it.id === activeId) : -1;
-  const forward = (from: number) => {
-    for (let i = Math.max(1, from); i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + items[i - 1].h + gapAfter(items[i - 1], items[i]));
-  };
-  if (ai < 0) {
-    tops[0] = Math.max(0, tops[0] ?? 0);
-    forward(1);
-  } else {
-    forward(ai + 1);
-    for (let i = ai - 1; i >= 0; i--) tops[i] = Math.min(tops[i], tops[i + 1] - gapAfter(items[i], items[i + 1]) - items[i].h);
-    if (tops[0] < 0) {
-      tops[0] = 0;
-      forward(1);
-    }
-  }
-  const out: Record<string, number> = {};
-  items.forEach((it, i) => (out[it.id] = tops[i]));
-  return out;
-}
+const anchorGroup = (g: Gloss) => g.anchor
+  ? JSON.stringify([g.anchor.start.b, g.anchor.start.o, g.anchor.end.b, g.anchor.end.o])
+  : g.id;
 
 /**
  * Glosses and the reader's own notes share the margin and one layout, so
@@ -83,7 +54,7 @@ export function Margin({
     const col = colRef.current;
     if (!col) return;
     const base = col.getBoundingClientRect().top;
-    const items: Item[] = [];
+    const items: MarginItem[] = [];
     for (const g of glosses) {
       let desired = 0;
       let anchorY = 0;
@@ -99,13 +70,13 @@ export function Margin({
         desired = r.top - base;
         anchorY = r.top - base + 14;
       }
-      items.push({ id: g.id, desired, anchorY, h: cards.current.get(g.id)?.offsetHeight ?? 64, created: g.createdAt, mini: false });
+      items.push({ id: g.id, desired, anchorY, h: cards.current.get(g.id)?.offsetHeight ?? 64, created: g.createdAt, mini: false, group: anchorGroup(g) });
     }
     for (const h of notes) {
       const rects = anchorToRange(h.anchor)?.getClientRects();
       const r = rects && rects.length ? rects[0] : null;
       if (!r) continue;
-      items.push({ id: h.id, desired: r.top - base - 6, anchorY: r.top - base + r.height / 2, h: cards.current.get(h.id)?.offsetHeight ?? 48, created: h.createdAt, mini: false });
+      items.push({ id: h.id, desired: r.top - base - 6, anchorY: r.top - base + r.height / 2, h: cards.current.get(h.id)?.offsetHeight ?? 48, created: h.createdAt, mini: false, group: h.id });
     }
     items.sort((a, b) => a.desired - b.desired || a.created - b.created);
     // Crowding is read from where the passages are, not from card sizes, so it never oscillates.
@@ -116,7 +87,7 @@ export function Margin({
       it.mini = it.id !== active && !isNote.has(it.id) && (near(i - 1) || near(i + 1));
       mini[it.id] = it.mini;
     });
-    const tops = place(items, active);
+    const tops = placeMargin(items, active);
     const anchors: Record<string, number> = {};
     let height = 0;
     for (const it of items) {
@@ -143,10 +114,10 @@ export function Margin({
 
   useLayoutEffect(() => {
     compute();
-  }, [compute, size]);
+  }, [compute, size, layout.mini]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(schedule);
+    const ro = new ResizeObserver(() => flushSync(compute));
     if (articleEl) {
       ro.observe(articleEl);
       if (articleEl.parentElement) ro.observe(articleEl.parentElement);
@@ -159,7 +130,7 @@ export function Margin({
       window.removeEventListener("resize", schedule);
       cancelAnimationFrame(raf.current);
     };
-  }, [schedule, articleEl, glosses, notes]);
+  }, [schedule, compute, articleEl, glosses, notes]);
 
   const lead = [active, hover && hover !== active ? hover : null].filter((x): x is string => Boolean(x && layout.tops[x] !== undefined));
 
@@ -175,7 +146,7 @@ export function Margin({
           const x1 = gutter - 1;
           const d = `M ${x0} ${y0} C ${x0 + gutter * 0.5} ${y0}, ${x1 - gutter * 0.5} ${y1}, ${x1} ${y1}`;
           return (
-            <g key={`${id}:${Math.round(y0)}:${Math.round(y1)}`} opacity={id === active ? 1 : 0.6}>
+            <g data-action={glosses.find(g => g.id === id)?.action} key={`${id}:${Math.round(y0)}:${Math.round(y1)}`} opacity={id === active ? 1 : 0.6}>
               <path d={d} className="leader" />
               <circle cx={x0} cy={y0} r={2.4} fill="var(--rubric)" />
             </g>

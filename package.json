@@ -7,26 +7,43 @@
     "build": "next build",
     "start": "next start --port 3100",
     "lint": "tsc --noEmit",
-    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs"
+    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
+    "desktop:build": "node scripts/desktop-build.mjs",
+    "desktop:start": "desktop/out/Gloss/Gloss",
+    "desktop:install": "node scripts/desktop-install.mjs",
+    "desktop:check": "mise exec github:longbridge/nsh@0.2.0 -- nsh check desktop",
+    "test:pdf-pages": "node scripts/test-pdf-pages.mjs",
+    "test:ai-provider": "node scripts/test-ai-provider.mjs",
+    "test:epub": "node scripts/test-epub.mjs",
+    "test:desktop-transfer": "node scripts/test-desktop-transfer.mjs",
+    "test:learning": "node scripts/test-learning.mjs",
+    "desktop:speech": "node scripts/desktop-speech.mjs",
+    "test:pronunciation": "node scripts/test-pronunciation.mjs",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.13",
     "@llamaindex/liteparse-wasm": "2.15.1",
     "@mozilla/readability": "^0.6.0",
     "@neondatabase/serverless": "^1.2.0",
+    "fflate": "^0.8.3",
     "linkedom": "^0.18.13",
     "lucide-react": "^1.53.0",
-    "next": "^16.4.0",
+    "next": "^16.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.13",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.152.0"
   }
 }

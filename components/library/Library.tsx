@@ -1,6 +1,6 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { useUser } from "@/components/account/Auth";
 import { useRouter } from "next/navigation";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, ViewTransition } from "react";
 import { ChevronLeft, ChevronRight, LayoutGrid, Library as LibraryIcon, Search, X } from "lucide-react";
@@ -460,7 +460,7 @@ export function Library() {
 function bylineOf(x: { author?: string; source?: string; origin?: string }): string {
   if (x.author) return x.author;
   const src = x.source?.split(",")[0].trim();
-  if (src) return src.replace(/^www\./, "").replace(/\.(pdf|txt|md|markdown)$/i, "").replace(/\.(com|org|net|io|ai|dev|co|edu|blog|app)(\.[a-z]{2})?$/i, "");
+  if (src) return src.replace(/^www\./, "").replace(/\.(epub|pdf|txt|md|markdown)$/i, "").replace(/\.(com|org|net|io|ai|dev|co|edu|blog|app)(\.[a-z]{2})?$/i, "");
   return x.origin === "paste" ? "Pasted text" : x.origin === "file" ? "A file" : "Saved";
 }
 

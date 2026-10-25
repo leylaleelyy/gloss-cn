@@ -20,7 +20,7 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
   const railRef = useRef<HTMLDivElement>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
   const [railH, setRailH] = useState(0);
-  const [view, setView] = useState({ top: 0, h: 0 });
+  const viewportRef = useRef<HTMLSpanElement>(null);
   const [hoverY, setHoverY] = useState<number | null>(null);
   const drag = useRef(false);
 
@@ -57,15 +57,28 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
 
   useEffect(() => {
     if (!geo) return;
-    const on = () => setView({ top: window.scrollY - geo.docTop, h: window.innerHeight });
-    on();
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      const k = railH / geo.docH;
+      const top = window.scrollY - geo.docTop;
+      const y = Math.max(0, Math.min(railH - 14, top * k));
+      if (viewportRef.current) {
+        viewportRef.current.style.transform = `translateY(${y}px)`;
+        viewportRef.current.style.height = `${Math.max(14, Math.min(railH - y, window.innerHeight * k))}px`;
+      }
+      railRef.current?.setAttribute("aria-valuenow", String(Math.round(Math.max(0, Math.min(1, (top + window.innerHeight * 0.3) / geo.docH)) * 100)));
+    };
+    const on = () => { if (!frame) frame = requestAnimationFrame(paint); };
+    paint();
     window.addEventListener("scroll", on, { passive: true });
     window.addEventListener("resize", on);
     return () => {
+      if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("scroll", on);
       window.removeEventListener("resize", on);
     };
-  }, [geo]);
+  }, [geo, railH]);
 
   if (!geo || geo.docH <= 0) return <div ref={railRef} className="h-full" />;
   const k = railH / geo.docH;
@@ -93,8 +106,6 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
     return found;
   })();
 
-  const vTop = Math.max(0, view.top * k);
-  const vH = Math.max(14, Math.min(railH - vTop, view.h * k));
 
   return (
     <div
@@ -103,7 +114,7 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
       aria-label="Position in the text"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(Math.max(0, Math.min(1, (view.top + view.h * 0.3) / geo.docH)) * 100)}
+      aria-valuenow={0}
       tabIndex={-1}
       className="group relative h-full cursor-pointer touch-none select-none"
       onPointerDown={(e) => {
@@ -155,7 +166,8 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
 
       <span
         className="pointer-events-none absolute -left-[2px] w-[34px] rounded-[6px] border border-ink-3/35 bg-ink/[0.035] transition-[border-color] group-hover:border-ink-3/70"
-        style={{ top: vTop, height: vH }}
+        ref={viewportRef}
+        style={{ top: 0 }}
         aria-hidden
       />
 

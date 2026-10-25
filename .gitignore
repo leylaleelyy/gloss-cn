@@ -2,8 +2,15 @@
 !.env.example
 node_modules
 .next
+.next-desktop
+desktop/.nsh/
+desktop/out/
 .vercel
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
 .claude/
+
+.open-next/
+.wrangler/
+.dev.vars*

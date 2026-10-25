@@ -1,29 +1,21 @@
-import { peekFree } from "@/lib/quota";
-import { APP_UA } from "@/lib/together";
+import { normalizeProvider } from "@/lib/provider-config";
+import { aiHeaders, providerConfigured, getProvider } from "@/lib/provider";
 
 export const runtime = "nodejs";
 
-/** Validates a pasted key with a zero-cost model listing. The key is never stored or logged. */
+/** Test an explicit configuration without storing it or borrowing server credentials. */
 export async function POST(req: Request) {
-  let body: { apiKey?: string } = {};
+  let config;
+  try { config = normalizeProvider(await req.json()); }
+  catch (error) { return Response.json({ ok: false, error: error instanceof Error ? error.message : "Invalid provider settings." }, { status: 400 }); }
   try {
-    body = await req.json();
-  } catch {}
-  const key = body.apiKey?.trim();
-  if (!key) return Response.json({ ok: false });
-  try {
-    const res = await fetch("https://api.together.xyz/v1/models", {
-      headers: { Authorization: `Bearer ${key}`, "User-Agent": APP_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    return Response.json({ ok: res.ok });
-  } catch {
-    return Response.json({ ok: false });
-  }
+    const response = await fetch(`${config.baseUrl}/models`, { headers: aiHeaders(config), signal: AbortSignal.timeout(10_000), redirect: "error" });
+    return Response.json({ ok: response.ok, ...(!response.ok ? { error: `Provider returned HTTP ${response.status}. Check the URL and key; some providers do not expose /models.` } : {}) });
+  } catch { return Response.json({ ok: false, error: "Could not reach the provider. Check its URL and that the server is running." }); }
 }
 
-/** Whether there is a shared key, and how much of today's free allowance is left on it. */
-export async function GET(req: Request) {
-  const house = Boolean(process.env.TOGETHER_API_KEY);
-  return Response.json({ house, free: house ? await peekFree(req) : null });
+export async function GET() {
+  const configured = await providerConfigured();
+  const provider = configured ? await getProvider() : null;
+  return Response.json({ house: configured, model: provider?.model ?? null, free: null });
 }

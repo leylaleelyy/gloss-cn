@@ -1,5 +1,6 @@
+import { languageInstruction } from "./response-language";
 import type { Action } from "./actions";
-import type { ChatMessage } from "./together";
+import type { ChatMessage } from "./ai";
 
 export type DocPayload = {
   title: string;
@@ -21,7 +22,7 @@ export type ThreadPayload = {
 
 /**
  * The system message carries the whole text and nothing that varies per
- * question, so Together's prefix cache serves every follow-up on the same
+ * question, so the provider's prefix cache serves every follow-up on the same
  * article at the cached rate (about 2% of the fresh input price on Flash).
  */
 export function systemFor(doc: DocPayload): string {
@@ -60,7 +61,7 @@ const TASKS: Record<Exclude<Action, "ask">, string> = {
   define:
     "Define this as it is used here, in one or two sentences. Only if it is archaic, technical or used in an unusual sense, say so and give the plain modern equivalent. Never remark that a word is standard, common or not archaic.",
   simplify:
-    "Rewrite this in plain, modern English that keeps the full meaning. Then add one short line on the point it makes.",
+    "Rewrite this in plain, modern language that keeps the full meaning. Then add one short line on the point it makes.",
   check:
     "Does this still hold up? Compare it with current knowledge: say what has held up, what has changed, and how confident you are. This task is mostly outside the text, so mark it as such. 3 to 5 sentences.",
   connect:
@@ -100,12 +101,14 @@ export function buildMessages(
   history: { role: "user" | "assistant"; content: string }[] = [],
   length: LengthKey = "normal",
   web?: string,
-  tool = false
+  tool = false,
+  language?: unknown
 ): ChatMessage[] {
   // The length note and any web results come after the document, so the cached prefix is unchanged.
   return [
     { role: "system", content: systemFor(doc) },
     { role: "system", content: LENGTHS[length] },
+    { role: "system", content: languageInstruction(language) },
     ...(web ? [{ role: "system" as const, content: web }] : []),
     ...(tool ? [{ role: "system" as const, content: TOOL_NOTE }] : []),
     { role: "user", content: firstTurn(thread) },

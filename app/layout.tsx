@@ -4,7 +4,7 @@ import { Atkinson_Hyperlegible_Next, Literata, Newsreader, Schibsted_Grotesk } f
 import { BOOT_SCRIPT } from "@/lib/settings";
 import "./globals.css";
 import { Tooltips } from "@/components/ui/Tooltips";
-import { ClerkProvider } from "@clerk/nextjs";
+import { ClerkProvider } from "@/components/account/Auth";
 import { SyncAgent } from "@/components/account/SyncAgent";
 import { OG_IMAGE, SITE_URL } from "@/lib/brand";
 
@@ -77,7 +77,7 @@ const CLERK_APPEARANCE = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${serif.variable} ${sans.variable} ${book.variable} ${legible.variable}`} suppressHydrationWarning>
+    <html lang="en" data-desktop={process.env.NEXT_PUBLIC_DESKTOP_LOCAL === "1" ? "true" : undefined} className={`${serif.variable} ${sans.variable} ${book.variable} ${legible.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>

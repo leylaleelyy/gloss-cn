@@ -184,11 +184,13 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
     place();
     const ro = new ResizeObserver(() => place(true));
     if (boxRef.current) ro.observe(boxRef.current);
-    const on = () => requestAnimationFrame(() => place(true));
+    let frame = 0;
+    const on = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; place(true); }); };
     window.addEventListener("scroll", on, { passive: true });
     window.addEventListener("resize", on);
     return () => {
       ro.disconnect();
+      if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("scroll", on);
       window.removeEventListener("resize", on);
     };
@@ -282,8 +284,8 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
   };
 
   const short = isShortSelection(lens.anchor.quote);
-  const primary: Action[] = ["explain", short ? "define" : "simplify"];
-  const more: Action[] = [short ? "simplify" : "define", "check", "connect", "counter"];
+  const primary: Action[] = ["explain", "define", "simplify"];
+  const more: Action[] = ["check", "connect", "counter"];
   const existing = lens.highlightId ? useStore.getState().highlights[ix.article.id]?.find((h) => h.id === lens.highlightId) : undefined;
   const markerColor = MARKERS.find((m) => m.key === marker)?.color;
 

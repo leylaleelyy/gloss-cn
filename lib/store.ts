@@ -1,9 +1,11 @@
 "use client";
 
 import { create } from "zustand";
+import type { Analysis, Definition } from "./learning";
 import type { Action } from "./actions";
 import type { Article, BriefData } from "./article";
 import { modelOf, type ModelKey, type Source, type Usage } from "./models";
+import { responseLanguage } from "./response-language";
 import { DEFAULT_SETTINGS, SETTINGS_KEY, type Marker, type Settings } from "./settings";
 
 /** A point in the text: block id and a character offset into its plain text. */
@@ -11,6 +13,9 @@ export type Point = { b: string; o: number };
 export type Anchor = { start: Point; end: Point; quote: string };
 
 export type Turn = {
+  /** Structured learning answer, persisted alongside its readable transcript. */
+  analysis?: Analysis;
+  definition?: Definition;
   role: "user" | "assistant";
   content: string;
   usage?: Usage;
@@ -203,7 +208,7 @@ export const useStore = create<State>((set, get) => ({
       briefs,
       progress: data.progress ?? {},
       library: data.library ?? [],
-      settings: { ...DEFAULT_SETTINGS, ...settings, model: modelOf(settings.model) },
+      settings: { ...DEFAULT_SETTINGS, ...settings, responseLanguage: responseLanguage(settings.responseLanguage), model: modelOf(settings.model) },
       hydrated: true,
     });
     void migrateDocs();

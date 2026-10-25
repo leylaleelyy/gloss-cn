@@ -11,7 +11,7 @@ type Props = {
   setUrl: (v: string) => void;
   busy: Busy;
   error: string | null;
-  /** The error is fixed by the reader's own Together key: offer the key menu. */
+  /** The error is fixed by the reader's AI provider configuration: offer the key menu. */
   errorNeedsKey?: boolean;
   onSubmit: (url: string) => void;
   /** Keep it in the library for later, instead of reading it now. */
@@ -72,7 +72,7 @@ export const ImportBar = forwardRef<HTMLInputElement, Props>(function ImportBar(
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[13.5px] text-ink-3">
         <button type="button" onClick={onPickFile} disabled={!!busy} className="inline-flex items-center gap-1.5 transition-colors hover:text-ink">
-          <FileUp size={15} /> Open a PDF
+          <FileUp size={15} /> Open a book or file
         </button>
         <button type="button" onClick={onPasteText} disabled={!!busy} className="inline-flex items-center gap-1.5 transition-colors hover:text-ink">
           <TextCursorInput size={15} /> Paste text
@@ -90,7 +90,7 @@ export const ImportBar = forwardRef<HTMLInputElement, Props>(function ImportBar(
             <>
               {" "}
               <button type="button" onClick={openKeyMenu} className="font-medium text-ink underline decoration-rule-strong underline-offset-4">
-                Add your Together key
+                Add your AI provider settings
               </button>
             </>
           )}

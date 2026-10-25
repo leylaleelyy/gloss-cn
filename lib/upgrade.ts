@@ -1,5 +1,7 @@
 "use client";
 
+import { providerHeaders } from "@/lib/provider-config";
+
 /**
  * Hard PDF pages, read again in the background. The import shows LiteParse's
  * reading at once; pages whose layout looked hard (columns, tables, maths)
@@ -119,7 +121,7 @@ export function startUpgrade(id: string, listener: (p: UpgradeProgress) => void)
             try {
               const res = await fetch("/api/pdf-page", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...providerHeaders() },
                 body: JSON.stringify({ image: s.image, apiKey, mode: "layout" }),
               });
               const j = (await res.json()) as { markdown?: string; code?: string };

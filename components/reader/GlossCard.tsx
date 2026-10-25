@@ -1,14 +1,16 @@
 "use client";
 
-import { Show, SignInButton } from "@clerk/nextjs";
+import { Show, SignInButton } from "@/components/account/Auth";
 import { forwardRef, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, Check, ChevronsDownUp, Copy, CornerDownRight, RotateCcw, Square, Trash2 } from "lucide-react";
 import { ACTIONS } from "@/lib/actions";
-import { followUp, openKeyMenu, retry, stopGloss } from "@/lib/ask";
+import { followUp, openKeyMenu, openRelatedGloss, retry, stopGloss } from "@/lib/ask";
 import { MODELS } from "@/lib/models";
 import { useStore, type Gloss, type Turn } from "@/lib/store";
 import { undash } from "@/lib/article";
 import { Answer, keyLine, Sources, unmark } from "./Answer";
+import { AnalysisContent, WordCard } from "./LearningContent";
+import { learningSource } from "@/lib/learning-source";
 import { Writing } from "./Writing";
 import { fmtCost, fmtTokens, useReader } from "./context";
 
@@ -52,7 +54,7 @@ function KeyButton() {
         onClick={openKeyMenu}
         className="inline-flex h-8 items-center rounded-full bg-ink px-3.5 text-[12.5px] font-medium text-bg transition-transform active:scale-[0.97]"
       >
-        Add your Together key
+        Add your AI provider settings
       </button>
       <Show when="signed-out">
         <SignInButton mode="modal">
@@ -66,8 +68,8 @@ function KeyButton() {
 }
 
 /**
- * A card in the margin column: moved to its place along the column, gliding
- * when the layout changes, but put straight in its place the first time.
+ * Place cards atomically with their measured heights, so expanding content
+ * never crosses siblings while their positions catch up.
  */
 export function marginStyle(top: number | undefined, fresh: boolean): CSSProperties {
   return {
@@ -154,6 +156,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
       <article
         ref={ref}
         data-gloss={gloss.id}
+        data-action={gloss.action}
         aria-label={`${gloss.question ?? label}${n ? `, paragraph ${n}` : ""}. Open note.`}
         role="button"
         tabIndex={0}
@@ -194,6 +197,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
     <article
       ref={ref}
       data-gloss={gloss.id}
+      data-action={gloss.action}
       aria-label={`${label} note${n ? ` on paragraph ${n}` : ""}`}
       className={[
         variant === "margin" ? "gloss" : "gloss !relative !transform-none",
@@ -245,7 +249,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
       {gloss.question && <p className="mb-1.5 text-[14px] font-medium leading-snug text-ink">{gloss.question}</p>}
 
       <div className="gloss-body">
-        <TurnBody t={first} />
+        {first.definition && gloss.anchor ? <div className="study-inline dictionary-content"><WordCard word={first.definition} source={learningSource(ix, gloss.anchor)} surface={gloss.anchor.quote.length <= 120 ? gloss.anchor.quote : first.definition.word} /></div> : first.analysis && gloss.anchor ? <AnalysisContent analysis={first.analysis} source={learningSource(ix, gloss.anchor)} /> : <TurnBody t={first} />}
       </div>
 
       {gloss.turns.slice(1).map((t, i) =>
@@ -263,6 +267,11 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
 
       {active && variant !== "list" && (
         <>
+          {gloss.anchor && ["explain", "simplify", "define"].includes(gloss.action) && <div className="related-reading-actions">
+            {(["explain", "define", "simplify"] as const).filter(action => action !== gloss.action).map(action => <button key={action} type="button" className="related-reading-action" onClick={() => openRelatedGloss(ix, gloss, action)}>
+              {ACTIONS[action].label} this selection ↗
+            </button>)}
+          </div>}
           <footer className="mt-3 flex items-center gap-0.5 text-ink-3">
             <span className="min-w-0 flex-1 truncate text-[11.5px] tabular-nums text-ink-4">
               <Receipt t={last.role === "assistant" ? last : first} />

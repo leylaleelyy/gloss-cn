@@ -1,5 +1,7 @@
 "use client";
 
+import { providerHeaders } from "@/lib/provider-config";
+
 import { useEffect, useRef } from "react";
 import { create } from "zustand";
 import { Headphones, LoaderCircle, Pause, Play, Square } from "lucide-react";
@@ -83,7 +85,7 @@ function clip(i: number): Promise<string> {
     const signal = ctrl?.signal;
     p = fetch("/api/speak", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
       body: JSON.stringify({ text: items[i].text, apiKey: readApiKey() || undefined }),
       signal,
     }).then(async (r) => {
@@ -142,11 +144,6 @@ async function playAt(i: number, s: number) {
 
 export function startListening(ix: DocIndex, fromBlock: string | null) {
   stopListening();
-  // Reading aloud always uses the reader's own key: say so before anything is fetched.
-  if (!readApiKey()) {
-    useListen.setState({ status: "error", needKey: true, error: "Reading aloud uses your own Together key." });
-    return;
-  }
   const blocks = ix.article.blocks;
   const at = Math.max(0, fromBlock ? blocks.findIndex((b) => b.id === fromBlock) : 0);
   let first = true;

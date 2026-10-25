@@ -74,7 +74,16 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
       out.push(wrapRun(run, text, key));
       continue;
     }
-    const g = covering.filter((m) => m.kind === "gloss").map((m) => m.id);
+    const glossMarks = covering.filter(m => m.kind === "gloss");
+    const g = glossMarks.map(m => m.id);
+    const focusedMark = glossMarks.find(m => m.id === activeGloss) ?? glossMarks.find(m => m.id === hoverGloss);
+    // The selected card owns the cursor even when another overlapping note is hovered.
+    const penTone = (focusedMark ?? glossMarks[glossMarks.length - 1])?.color ?? "explain";
+    const tones = [...new Set(glossMarks.map(m => m.color ?? "explain"))];
+    const tone = focusedMark ? focusedMark.color ?? "explain" : tones.length === 1 ? tones[0] : undefined;
+    const mixed = tones.length > 1;
+    const colors = tones.map(t => t === "analysis" ? "var(--analysis-ink)" : t === "dictionary" ? "var(--dictionary-ink)" : "var(--rubric-line)");
+    const mixedBackground = mixed && !focusedMark ? `linear-gradient(to right, ${colors.map((c, i) => `${c} ${i * 100 / colors.length}% ${(i + 1) * 100 / colors.length}%`).join(", ")})` : undefined;
     const hls = covering.filter((m) => m.kind === "hl");
     const h = hls.map((m) => m.id);
     const color = hls[hls.length - 1]?.color;
@@ -84,6 +93,9 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
       h.length && activeHighlight && h.includes(activeHighlight) ? "is-active" : "",
       fresh && (g.includes(fresh) || h.includes(fresh)) ? "is-new" : "",
       g.length ? "m-gloss" : "",
+      tone === "analysis" ? "m-analysis" : "",
+      tone === "dictionary" ? "m-dictionary" : "",
+      mixed && !focusedMark ? "m-mixed" : "",
       g.length && activeGloss && g.includes(activeGloss) ? "is-active" : "",
       g.length && hoverGloss && g.includes(hoverGloss) ? "is-hover" : "",
       pending ? "m-pending" : "",
@@ -91,7 +103,7 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
       .filter(Boolean)
       .join(" ");
     out.push(
-      <span key={key} className={cls} data-g={g.length ? g.join(" ") : undefined} data-h={h.length ? h.join(" ") : undefined} data-c={color && color !== "yellow" ? color : undefined}>
+      <span key={key} className={cls} data-pen={g.length ? penTone : undefined} data-g={g.length ? g.join(" ") : undefined} style={mixedBackground ? { backgroundImage: mixedBackground } : undefined} title={mixed ? tones.map(t => t === "analysis" ? "Analyze" : t === "dictionary" ? "Dictionary" : "Explain").join(" · ") + " · Click to switch notes" : undefined} data-h={h.length ? h.join(" ") : undefined} data-c={color && color !== "yellow" ? color : undefined}>
         {wrapRun(run, text, "r")}
       </span>
     );

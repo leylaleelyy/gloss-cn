@@ -1,8 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
+import { providerConfigured } from "@/lib/provider";
+import { auth } from "@/lib/auth";
 import { saveCover } from "@/lib/db";
 import { isTopic } from "@/lib/library";
-import { COVER_USD, paintCover } from "@/lib/paint";
-import { chargeFree, checkFree, needKey } from "@/lib/quota";
+import { paintCover } from "@/lib/paint";
+import { needKey } from "@/lib/quota";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -24,15 +25,9 @@ export async function POST(req: Request) {
   if (!id || !scene || !isTopic(body.topic)) return Response.json({ error: "id, scene and topic are required." }, { status: 400 });
 
   const apiKey = body.apiKey?.trim() || undefined;
-  let free: Awaited<ReturnType<typeof checkFree>> | null = null;
-  if (!apiKey) {
-    if (!process.env.TOGETHER_API_KEY) return needKey(null);
-    free = await checkFree(req, 12);
-    if (!free.ok) return needKey(free);
-  }
+  if (!(await providerConfigured())) return needKey(null);
   const r = await paintCover({ scene, topic: body.topic, apiKey, signal: req.signal });
   if (!r.ok) return Response.json({ error: r.error }, { status: 502 });
-  if (free) await chargeFree(free.subject, COVER_USD);
 
   const { userId } = await auth();
   if (userId && process.env.DATABASE_URL) await saveCover(userId, id, r.jpeg).catch(() => {});

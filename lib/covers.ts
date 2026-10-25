@@ -1,5 +1,7 @@
 "use client";
 
+import { providerHeaders } from "@/lib/provider-config";
+
 /**
  * Painted covers in the browser: kept in their own IndexedDB store, fetched
  * from the account when they were painted on another device, and painted on
@@ -67,7 +69,7 @@ export async function paint(item: LibraryItem): Promise<"ok" | "rest" | "error">
   try {
     const res = await fetch("/api/covers", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
       body: JSON.stringify({ id: item.id, scene: item.scene, topic: item.topic, apiKey: readApiKey() || undefined }),
     });
     if (res.status === 429 || res.status === 401) return "rest";

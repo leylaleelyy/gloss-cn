@@ -1,18 +1,8 @@
-/**
- * Together AI client. Server-side only. Raw fetch, OpenAI-compatible SSE.
- *
- * Things learned the hard way, kept on purpose:
- * 1. A named User-Agent. Together's WAF has 403'd the default undici agent.
- * 2. stream_options.include_usage, so the cost receipt is real, not a guess.
- * 3. Errors come back as JSON: surface error.message, not the raw body.
- * 4. enable_thinking:false keeps reasoners from spending the budget thinking.
- *    Verified per model on 2026-10-08 with the full sample article (11k tokens).
- */
-
-export const TOGETHER_URL = "https://api.together.xyz/v1/chat/completions";
+/** OpenAI-compatible chat client. Server-side only. */
+import { getProvider, aiHeaders } from "./provider";
 export const APP_UA = "Gloss/0.1";
 
-import { MODELS, costFor, type ModelEntry, type ModelKey, type StreamEvent, type Usage } from "./models";
+import { type ModelKey, type StreamEvent, type Usage } from "./models";
 
 export { MODELS, DEFAULT_MODEL, isModelKey, costFor } from "./models";
 export type { ModelKey, StreamEvent, Usage } from "./models";
@@ -42,9 +32,9 @@ function errorMessage(status: number, body: string): string {
   } catch {
     /* not JSON */
   }
-  if (status === 401) return "Together rejected that API key. Check it and try again.";
-  if (status === 429) return "Together is rate limiting this key. Wait a moment, or use your own key.";
-  return `Together API ${status}: ${msg}`;
+  if (status === 401) return "The AI provider rejected that API key. Check it and try again.";
+  if (status === 429) return "The AI provider is rate limiting this key. Wait a moment, or use your own key.";
+  return `The AI provider API ${status}: ${msg}`;
 }
 
 export async function* streamChat(req: {
@@ -59,10 +49,10 @@ export async function* streamChat(req: {
   /** "none" sends the tools (a conversation that already used one needs them) but asks for an answer. */
   toolChoice?: "auto" | "none";
 }): AsyncGenerator<StreamEvent> {
-  const model: ModelEntry = MODELS[req.model];
-  const apiKey = req.apiKey?.trim() || process.env.TOGETHER_API_KEY;
-  if (!apiKey) {
-    yield { type: "error", text: "No Together API key. Set TOGETHER_API_KEY, or add your own key." };
+  const provider = await getProvider();
+  const model = { id: provider.model, label: provider.model };
+  if (!provider.baseUrl || !provider.model) {
+    yield { type: "error", text: "Configure an AI base URL and model in AI settings." };
     return;
   }
 
@@ -70,28 +60,23 @@ export async function* streamChat(req: {
 
   let res: Response;
   try {
-    res = await fetch(TOGETHER_URL, {
+    res = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: "POST",
       signal: req.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "User-Agent": APP_UA,
-      },
+      headers: aiHeaders(provider),
       body: JSON.stringify({
         model: model.id,
         stream: true,
         stream_options: { include_usage: true },
         temperature: req.temperature ?? 0.4,
         max_tokens: req.maxTokens ?? 900,
-        chat_template_kwargs: { enable_thinking: false },
         messages: req.messages,
         ...(req.tools ? { tools: req.tools, tool_choice: req.toolChoice ?? "auto" } : {}),
       }),
     });
   } catch (e) {
     if (req.signal?.aborted) return;
-    yield { type: "error", text: `Could not reach Together: ${String(e)}` };
+    yield { type: "error", text: `Could not reach the AI provider: ${String(e)}` };
     return;
   }
 
@@ -117,7 +102,7 @@ export async function* streamChat(req: {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
+    const frames = buffer.split(/\r?\n\r?\n/);
     buffer = frames.pop() ?? "";
 
     for (const frame of frames) {
@@ -152,7 +137,7 @@ export async function* streamChat(req: {
         const ct = chunk.usage.completion_tokens ?? 0;
         yield {
           type: "usage",
-          usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: costFor(req.model, pt, cached, ct) },
+          usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: null },
         };
       }
     }
@@ -170,27 +155,26 @@ export async function completeJSON<T>(req: {
   /** Let the model reason before it answers, for checking a text against itself. Its thinking spends from maxTokens. */
   thinking?: boolean;
 }): Promise<{ ok: true; data: T; usage: Usage } | { ok: false; error: string }> {
-  const model: ModelEntry = MODELS[req.model];
-  const apiKey = req.apiKey?.trim() || process.env.TOGETHER_API_KEY;
-  if (!apiKey) return { ok: false, error: "No Together API key. Set TOGETHER_API_KEY, or add your own key." };
+  const provider = await getProvider();
+  const model = { id: provider.model, label: provider.model };
+  if (!provider.baseUrl || !provider.model) return { ok: false, error: "Configure an AI base URL and model in AI settings." };
 
   let res: Response;
   try {
-    res = await fetch(TOGETHER_URL, {
+    res = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: "POST",
       signal: req.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "User-Agent": APP_UA },
+      headers: aiHeaders(provider),
       body: JSON.stringify({
         model: model.id,
         temperature: 0.3,
         max_tokens: req.maxTokens ?? 1400,
-        chat_template_kwargs: { enable_thinking: Boolean(req.thinking) },
         response_format: { type: "json_object" },
         messages: req.messages,
       }),
     });
   } catch (e) {
-    return { ok: false, error: `Could not reach Together: ${String(e)}` };
+    return { ok: false, error: `Could not reach the AI provider: ${String(e)}` };
   }
   const body = await res.text();
   if (!res.ok) return { ok: false, error: errorMessage(res.status, body) };
@@ -206,7 +190,7 @@ export async function completeJSON<T>(req: {
     const pt = j.usage?.prompt_tokens ?? 0;
     const cached = j.usage?.prompt_tokens_details?.cached_tokens ?? 0;
     const ct = j.usage?.completion_tokens ?? 0;
-    return { ok: true, data, usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: costFor(req.model, pt, cached, ct) } };
+    return { ok: true, data, usage: { promptTokens: pt, cachedTokens: cached, completionTokens: ct, costUsd: null } };
   } catch {
     return { ok: false, error: "The model returned something that was not valid JSON. Try again." };
   }

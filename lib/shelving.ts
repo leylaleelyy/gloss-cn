@@ -1,5 +1,7 @@
 "use client";
 
+import { providerHeaders } from "@/lib/provider-config";
+
 /**
  * The library's sorting, from the browser: each new text goes to /api/shelve
  * once, in the background, and comes back with a topic, tags and a scene for
@@ -16,6 +18,7 @@ import { loadDoc, useStore, type LibraryItem } from "./store";
 const inflight = new Set<string>();
 /** The free allowance ran out: stop sorting quietly until the next visit. */
 let resting = false;
+if (typeof window !== "undefined") window.addEventListener("gloss:provider", () => { resting = false; });
 
 type Text = Pick<Article, "id" | "title" | "author" | "source" | "dek"> & { blocks?: Article["blocks"] };
 
@@ -25,7 +28,7 @@ export async function shelveText(a: Text): Promise<void> {
   try {
     const res = await fetch("/api/shelve", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
       body: JSON.stringify({ title: a.title, author: a.author, source: a.source, dek: a.dek, excerpt: a.blocks ? excerptOf(a.blocks) : undefined, apiKey: readApiKey() || undefined }),
     });
     if (res.status === 429 || res.status === 401) {

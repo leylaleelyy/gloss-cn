@@ -1,14 +1,15 @@
+import { languageInstruction } from "@/lib/response-language";
+import { providerConfigured } from "@/lib/provider";
 import { BRIEF_TASK, systemFor, type DocPayload } from "@/lib/prompts";
-import { completeJSON, DEFAULT_MODEL, isModelKey } from "@/lib/together";
+import { completeJSON, DEFAULT_MODEL, isModelKey } from "@/lib/ai";
 import { undash, type BriefData } from "@/lib/article";
-import { chargeFree, checkFree, estimateUsd, needKey } from "@/lib/quota";
-import { MODELS } from "@/lib/models";
+import { needKey } from "@/lib/quota";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
-  let body: { apiKey?: string; model?: string; doc?: DocPayload };
+  let body: { apiKey?: string; model?: string; responseLanguage?: unknown; doc?: DocPayload };
   try {
     body = await req.json();
   } catch {
@@ -20,13 +21,7 @@ export async function POST(req: Request) {
   }
 
   const apiKey = body.apiKey?.trim() || undefined;
-  // A gloss of the whole text spends from the same free allowance.
-  let free: Awaited<ReturnType<typeof checkFree>> | null = null;
-  if (!apiKey) {
-    if (!process.env.TOGETHER_API_KEY) return needKey(null);
-    free = await checkFree(req);
-    if (!free.ok) return needKey(free);
-  }
+  if (!(await providerConfigured())) return needKey(null);
 
   const model = isModelKey(body.model) ? body.model : DEFAULT_MODEL;
   const result = await completeJSON<BriefData>({
@@ -40,13 +35,10 @@ export async function POST(req: Request) {
     maxTokens: 16000,
     messages: [
       { role: "system", content: systemFor(doc) },
+      { role: "system", content: languageInstruction(body.responseLanguage) },
       { role: "user", content: BRIEF_TASK },
     ],
   });
-  if (free) {
-    const chars = doc.paras.reduce((a, p) => a + (p.text?.length ?? 0), 0);
-    await chargeFree(free.subject, result.ok ? result.usage.costUsd : estimateUsd(chars, MODELS[model].inPerM));
-  }
   if (!result.ok) return Response.json({ error: result.error }, { status: 502 });
 
   // Keep only well-formed, in-range items so the UI never links to nothing.
@@ -69,5 +61,5 @@ export async function POST(req: Request) {
       .sort((a, b) => a.start - b.start)
       .slice(0, 10),
   };
-  return Response.json({ brief, usage: result.usage, model }, { headers: free ? { "X-Free-Left": free.left.toFixed(3) } : undefined });
+  return Response.json({ brief, usage: result.usage, model });
 }
