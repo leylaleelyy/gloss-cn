@@ -2110,3 +2110,17 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   text-decoration: underline;
   text-decoration-color: #299c90;
 }
+
+/* Reader fonts supplied by the library owner; fetched only when selected. */
+@font-face { font-family: "Gloss Dyslexie"; src: url('/fonts/dyslexie.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Gloss Huiwen"; src: url('/fonts/huiwen.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Gloss Arphic"; src: url('/fonts/arphic.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+[data-face="dyslexie"] .prose-read { font-family: "Gloss Dyslexie", var(--font-sans); }
+[data-face="huiwen"] .prose-read { font-family: "Gloss Huiwen", var(--font-serif); }
+[data-face="arphic"] .prose-read { font-family: "Gloss Arphic", var(--font-serif); }
+[data-face="dyslexie"] .prose-read .blk[data-type="h2"],
+[data-face="dyslexie"] .prose-read .blk[data-type="h3"],
+[data-face="huiwen"] .prose-read .blk[data-type="h2"],
+[data-face="huiwen"] .prose-read .blk[data-type="h3"],
+[data-face="arphic"] .prose-read .blk[data-type="h2"],
+[data-face="arphic"] .prose-read .blk[data-type="h3"] { font-family: inherit; }

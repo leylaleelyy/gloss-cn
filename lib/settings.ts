@@ -16,13 +16,16 @@ export const FACES: { key: Settings["face"]; label: string; css: string }[] = [
   { key: "book", label: "Book", css: "var(--font-book)" },
   { key: "sans", label: "Sans", css: "var(--font-sans)" },
   { key: "legible", label: "Legible", css: "var(--font-legible)" },
+  { key: "dyslexie", label: "Dyslexie", css: '"Gloss Dyslexie", sans-serif' },
+  { key: "huiwen", label: "汇文明朝体", css: '"Gloss Huiwen", serif' },
+  { key: "arphic", label: "文鼎书苑宋", css: '"Gloss Arphic", serif' },
 ];
 
 /** Everything a reader can tune. Applied to <html> as data attributes and CSS variables. */
 export type Settings = {
   theme: "auto" | "paper" | "sepia" | "snow" | "night" | "ink";
   pen: "vermilion" | "cobalt" | "moss" | "graphite";
-  face: "serif" | "book" | "sans" | "legible";
+  face: "serif" | "book" | "sans" | "legible" | "dyslexie" | "huiwen" | "arphic";
   size: number;
   leading: "tight" | "normal" | "loose";
   width: "narrow" | "normal" | "wide";

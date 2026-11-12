@@ -278,7 +278,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
             <div className="space-y-3.5">
               <div>
                 <p className="mb-2.5 text-[12.5px] text-ink-3">Typeface</p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {FACES.map((f) => (
                     <button
                       key={f.key}
@@ -289,8 +289,8 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                         settings.face === f.key ? "border-ink bg-bg" : "border-rule hover:border-rule-strong"
                       }`}
                     >
-                      <span className="text-[22px] leading-none text-ink" style={{ fontFamily: f.css }}>
-                        Ag
+                      <span className="text-[22px] leading-none text-ink" style={{ fontFamily: ["dyslexie", "huiwen", "arphic"].includes(f.key) && settings.face !== f.key ? undefined : f.css }}>
+                        {f.key === "huiwen" || f.key === "arphic" ? "书卷" : "Ag"}
                       </span>
                       <span className={`text-[11px] leading-none ${settings.face === f.key ? "font-medium text-ink" : "text-ink-3"}`}>{f.label}</span>
                     </button>
