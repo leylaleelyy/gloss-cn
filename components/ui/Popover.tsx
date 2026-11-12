@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 /** A button that opens a small panel. Closes on outside click and Escape. */
 export function Popover({
@@ -26,6 +26,41 @@ export function Popover({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const viewport = window.visualViewport;
+    const fit = () => {
+      const panel = panelRef.current;
+      const anchor = ref.current;
+      if (!panel || !anchor) return;
+      const a = anchor.getBoundingClientRect();
+      const left = viewport?.offsetLeft ?? 0;
+      const top = viewport?.offsetTop ?? 0;
+      const w = viewport?.width ?? window.innerWidth;
+      const h = viewport?.height ?? window.innerHeight;
+      const panelWidth = Math.min(width, Math.max(0, w - 24));
+      const x = Math.max(left + 12, Math.min(align === "right" ? a.right - panelWidth : a.left, left + w - panelWidth - 12));
+      const y = Math.max(top + 12, Math.min(a.bottom + 8, top + h - 60));
+      Object.assign(panel.style, {
+        width: `${panelWidth}px`, left: `${x - a.left}px`, right: "auto",
+        top: `${y - a.top}px`, maxHeight: `${Math.max(0, top + h - y - 12)}px`,
+      });
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    window.addEventListener("scroll", fit, true);
+    viewport?.addEventListener("resize", fit);
+    viewport?.addEventListener("scroll", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("scroll", fit, true);
+      viewport?.removeEventListener("resize", fit);
+      viewport?.removeEventListener("scroll", fit);
+    };
+  }, [open, width, align]);
 
   useEffect(() => {
     if (!openOn) return;
@@ -71,9 +106,10 @@ export function Popover({
       </button>
       {open && (
         <div
+          ref={panelRef}
           role="dialog"
           aria-label={label}
-          className={`pop absolute top-[calc(100%+8px)] z-[60] p-4 ${align === "right" ? "right-0" : "left-0"}`}
+          className={`pop absolute top-[calc(100%+8px)] z-[60] overflow-y-auto overscroll-contain p-4 ${align === "right" ? "right-0" : "left-0"}`}
           style={{ width, ["--origin" as string]: align === "right" ? "top right" : "top left" }}
         >
           {children(() => setOpen(false))}

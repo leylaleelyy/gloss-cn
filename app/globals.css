@@ -294,7 +294,8 @@ kbd,
 /* ---------- reader layout: rail, numbers, text, gutter, margin ---------- */
 
 .reader-grid {
-  --m: min(calc(var(--read-size) * var(--measure-k)), 50rem);
+  /* Width is independent of the adjustable reading font size. */
+  --m: min(calc(20px * var(--measure-k)), 50rem);
   display: grid;
   justify-content: center;
   grid-template-columns: minmax(0, var(--m));

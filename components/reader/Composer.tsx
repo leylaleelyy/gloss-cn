@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useLayoutEffect, useImperativeHandle, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { ARTICLE_QUESTIONS } from "@/lib/actions";
 import { startGloss } from "@/lib/ask";
@@ -20,8 +20,31 @@ export const Composer = forwardRef<ComposerHandle, { currentBlock: () => string 
   const { ix } = useReader();
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
+  const dockRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
+
+  useLayoutEffect(() => {
+    if (!focused) return;
+    const viewport = window.visualViewport;
+    const dock = dockRef.current;
+    if (!viewport || !dock) return;
+    // Safari pans and resizes the visual viewport without resizing the layout viewport.
+    const fit = () => {
+      const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      dock.style.bottom = `calc(${inset}px + max(12px, env(safe-area-inset-bottom)))`;
+    };
+    fit();
+    viewport.addEventListener("resize", fit);
+    viewport.addEventListener("scroll", fit);
+    window.addEventListener("resize", fit);
+    return () => {
+      viewport.removeEventListener("resize", fit);
+      viewport.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+      dock.style.removeProperty("bottom");
+    };
+  }, [focused]);
 
   const ask = (question: string) => {
     const text = question.trim();
@@ -32,14 +55,14 @@ export const Composer = forwardRef<ComposerHandle, { currentBlock: () => string 
   };
 
   return (
-    <div className="composer focus-hide pointer-events-none sticky bottom-4 z-30 mt-20 sm:bottom-6">
+    <div ref={dockRef} className="composer focus-hide pointer-events-none sticky bottom-4 z-30 mt-20 sm:bottom-6">
       {focused && !q && (
         <div className="pointer-events-auto mb-2 flex flex-wrap justify-center gap-1.5" style={{ animation: "rise 0.3s var(--ease-out) both" }}>
           {suggestions.map((s) => (
             <button
               key={s}
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
+              onPointerDown={(e) => e.preventDefault()}
               onClick={() => ask(s)}
               className="rounded-full border border-rule bg-raised/95 px-3 py-1.5 text-[12.5px] text-ink-2 shadow-card backdrop-blur transition-colors hover:border-rule-strong hover:text-ink"
             >
