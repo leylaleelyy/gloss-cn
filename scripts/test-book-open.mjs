@@ -28,8 +28,25 @@ const dek='这是完整的书籍介绍，不应在五行后截断，也不能被
 await evaluate(`localStorage.setItem('gloss:v1',JSON.stringify({glosses:{},highlights:{},briefs:{},progress:{},library:[{id:'layout-test',title:${JSON.stringify(title)},author:'Long Author Name',dek:${JSON.stringify(dek)},origin:'file',topic:'science',words:50000,addedAt:1,cover:'/og.png'}]}))`);
 await send('Page.navigate',{url:baseUrl+'/library'});
 await until('!!document.querySelector("[data-book=layout-test]")');
-const open=async()=>{await evaluate(`document.querySelector('[data-book="layout-test"]').click()`);await until(`!!document.querySelector('.ob-cover-front img')`);
-const clipped = await evaluate(`new Promise(resolve=>{let bad=false;const start=performance.now();function frame(){const stage=document.querySelector('.ob-stage');if(stage?.dataset.layout==='single'){for(const selector of ['.ob-page','.ob-cover-front']){const el=document.querySelector(selector),r=el.getBoundingClientRect();if(r.left<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight+1)bad=true;}}if(performance.now()-start<500)requestAnimationFrame(frame);else resolve(bad);}frame();})`);
+const open=async()=>{await evaluate(`document.activeElement?.blur();document.querySelector('[data-book="layout-test"]').click()`);await until(`!!document.querySelector('.ob-cover-front img')`);
+await evaluate(`document.querySelector('.ob-stage').getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=0})`);
+await evaluate('document.fonts.ready');
+const coverText=await evaluate(`(()=>{const t=document.querySelector('.ob-cover-front .cover-title'),c=document.querySelector('.ob-cover-front .cover'),a=document.querySelector('.ob-cover-front .cover-author');return {height:t.clientHeight,line:parseFloat(getComputedStyle(t).lineHeight),width:t.clientWidth,scrollWidth:t.scrollWidth,authorBottom:a.offsetTop+a.offsetHeight,typeHeight:a.parentElement.clientHeight,coverHeight:c.clientHeight,typeHeightAll:a.parentElement.offsetHeight}})()`);
+assert.ok(Math.abs(coverText.height-Math.round(coverText.height/coverText.line)*coverText.line)<1,'Cover title must occupy complete lines: '+JSON.stringify(coverText));
+assert.ok(coverText.scrollWidth<=coverText.width+1,'Cover title wraps long words');
+assert.ok(coverText.authorBottom<=coverText.typeHeight+1,'Author fits the cover text area');
+assert.ok(coverText.typeHeightAll<coverText.coverHeight,'Cover preserves space for its image');
+const width=await evaluate('innerWidth');
+if(width===390||width===744){
+ await evaluate(`document.querySelector('.ob-book').getAnimations().forEach(a=>a.currentTime=480)`);
+ const shot=await send('Page.captureScreenshot',{format:'png'});await writeFile(join(profile,`cover-${width}.png`),Buffer.from(shot.data,'base64'));
+ await evaluate(`document.querySelector('.ob-stage').getAnimations({subtree:true}).forEach(a=>a.currentTime=650)`);
+ const middle=await send('Page.captureScreenshot',{format:'png'});await writeFile(join(profile,`turn-${width}.png`),Buffer.from(middle.data,'base64'));
+}
+const turning=await evaluate(`(()=>{const a=document.querySelector('.ob-cover').getAnimations()[0];return a?.effect.getKeyframes().some(f=>String(f.transform).includes('rotateY'))})()`);
+assert.ok(turning,'Opening must animate a real cover rotation');
+await evaluate(`document.querySelector('.ob-stage').getAnimations({subtree:true}).forEach(a=>{a.currentTime=0;a.play()})`);
+const clipped = await evaluate(`new Promise(resolve=>{let bad=false;const start=performance.now();function frame(){const stage=document.querySelector('.ob-stage');if(stage?.dataset.layout==='single'){for(const selector of ['.ob-page','.ob-cover-front']){const el=document.querySelector(selector),r=el.getBoundingClientRect();if(r.left<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight+1)bad=true;}}if(performance.now()-start<1600)requestAnimationFrame(frame);else resolve(bad);}frame();})`);
 assert.equal(clipped,false,'Portrait opening stays within the viewport throughout the animation');
 assert.equal(await evaluate(`getComputedStyle(document.querySelector('.ob-cover-front img')).animationName`),'none');
 await until(`document.querySelector('.ob-stage')?.dataset.phase==='open'`);await sleep(650)};
@@ -47,7 +64,7 @@ for(const [width,height] of [[744,1133],[820,1180],[1024,1366],[1133,744],[375,6
  console.log('Full text and animation cleanup passed',width,height);
 }
 // Interrupt the entrance and reopen: no delayed phase callback or orphaned animation.
-await evaluate(`document.querySelector('[data-book="layout-test"]').click()`);await sleep(120);
+await evaluate(`document.activeElement?.blur();document.querySelector('[data-book="layout-test"]').click()`);await sleep(120);
 await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);await until('!document.querySelector(".ob-stage")');await open();
 await send('Emulation.setDeviceMetricsOverride',{width:744,height:1133,deviceScaleFactor:1,mobile:true});await sleep(200);
 assert.ok(await evaluate(`(()=>{const r=document.querySelector('.ob-page').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()`));

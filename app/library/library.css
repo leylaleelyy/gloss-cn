@@ -823,10 +823,10 @@ button.plank-label:hover .plank-n {
 
 .cover {
   position: relative;
-  display: flex;
+  display: grid;
   width: 100%;
   height: 100%;
-  flex-direction: column;
+  grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
   border-radius: inherit;
   container-type: inline-size;
@@ -850,8 +850,7 @@ button.plank-label:hover .plank-n {
 }
 .cover-plate {
   position: relative;
-  flex-shrink: 0;
-  aspect-ratio: 1.1;
+  min-height: 0;
   margin: 9cqw 9cqw 0 13cqw;
   overflow: hidden;
   border-radius: 1px;
@@ -884,7 +883,8 @@ button.plank-label:hover .plank-n {
   flex: 1;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 0 9cqw 10cqw 14cqw;
+  min-width: 0;
+  padding: 5cqw 9cqw 10cqw 14cqw;
 }
 .cover-kicker {
   display: flex;
@@ -898,6 +898,8 @@ button.plank-label:hover .plank-n {
   opacity: 0.78;
 }
 .cover-title {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
   margin-top: 4.5cqw;
   display: -webkit-box;
   overflow: hidden;
@@ -906,11 +908,13 @@ button.plank-label:hover .plank-n {
   font-family: var(--font-serif);
   font-size: 8.8cqw;
   font-weight: 500;
-  line-height: 1.04;
+  line-height: 1.25;
   letter-spacing: -0.015em;
-  text-wrap: balance;
+  text-wrap: wrap;
 }
 .cover-author {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
   margin-top: 3.6cqw;
   font-family: var(--font-sans);
   font-size: 4.6cqw;
@@ -2100,3 +2104,13 @@ button.starter-card:active {
 /* Portrait uses a single face, so no hidden bookplate sweeps outside the screen. */
 .ob-stage[data-layout="single"] .ob-cover-inside { display: none; }
 .ob-stage[data-layout="single"] .ob-backdrop { transition-delay: 0s; }
+
+/* Anchor perspective at the portrait spine, so the turning face never swings left of it. */
+.ob-stage[data-layout="single"] .ob-world {
+  perspective-origin: calc(50% - var(--book-width) / 2) 50%;
+}
+.ob-stage[data-layout="single"] .ob-page-in > * {
+  opacity: 1;
+  transform: none;
+  transition: none;
+}

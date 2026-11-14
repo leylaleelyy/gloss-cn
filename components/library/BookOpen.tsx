@@ -104,22 +104,22 @@ export function BookOpen({
     mounted.current = true;
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
     const end = T(0, 0, 1, -g.D / 2, 0);
-    const opened = `${coverZ} rotateY(${g.wide ? -180 : 0}deg)`;
+    const opened = `${coverZ} rotateY(${g.wide ? -180 : -90}deg)`;
     const shifted = `translateX(${shift}px)`;
     // Inline styles are the settled pose; animations temporarily override them.
     b.style.transform = end;
     c.style.transform = opened;
-    c.style.opacity = g.wide ? "1" : "0";
+    c.style.opacity = "1";
     s.style.transform = shifted;
     const animations: Animation[] = [];
     if (reduce || desktop) {
       setPhase("open");
     } else {
       if (!g.wide) {
-        // Portrait stays inside the viewport throughout: lift the cover, then reveal the page.
+        // A portrait cover turns around the left spine until edge-on, without sweeping offscreen.
         animations.push(
-          b.animate([{ transform: T(0, 12, .96, -g.D / 2, 0), opacity: 0 }, { transform: end, opacity: 1 }], { duration: 320, easing: ease, fill: "both" }),
-          c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, delay: 180, easing: ease, fill: "both" }),
+          b.animate([{ transform: T(0, 12, .96, -g.D / 2, 0), opacity: 0 }, { transform: end, opacity: 1 }], { duration: 480, easing: ease, fill: "both" }),
+          c.animate([{ transform: `${coverZ} rotateY(0deg)` }, { transform: opened }], { duration: 850, delay: 220, easing: easeInOut, fill: "both" }),
         );
       } else {
         const delay = origin.kind === "spine" ? 700 : 500;
@@ -159,7 +159,21 @@ export function BookOpen({
     setPhase("out");
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
     if (reduce) return onClose();
-    if (desktop || !g.wide) {
+    if (!desktop && !g.wide) {
+      const pose = getComputedStyle(c).transform;
+      const bookPose = getComputedStyle(b).transform;
+      b.style.transform = bookPose;
+      c.style.transform = pose;
+      [b, c, s].forEach(el => el.getAnimations().forEach(a => a.cancel()));
+      const fold = c.animate([{ transform: pose }, { transform: `${coverZ} rotateY(0deg)` }], { duration: 580, easing: easeInOut, fill: "forwards" });
+      await fold.finished.catch(() => {});
+      if (!mounted.current) return;
+      const exit = s.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, fill: "forwards" });
+      await exit.finished.catch(() => {});
+      if (mounted.current) onClose();
+      return;
+    }
+    if (desktop) {
       const transform = getComputedStyle(b).transform;
       const opacity = getComputedStyle(b).opacity;
       b.style.transform = transform;
@@ -220,7 +234,7 @@ export function BookOpen({
   const shelved = new Date(book.added).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
   return createPortal(
-    <div className="ob-stage" data-phase={phase} data-layout={g.wide ? "spread" : "single"} role="dialog" aria-modal aria-label={book.title}>
+    <div className="ob-stage" data-phase={phase} data-layout={g.wide ? "spread" : "single"} style={{ ["--book-width" as string]: `${g.W}px` }} role="dialog" aria-modal aria-label={book.title}>
       <div className="ob-backdrop" onClick={close} />
       <div className="ob-world">
         <div ref={shiftRef} className="ob-shift" style={{ transform: `translateX(${shift}px)` }}>
@@ -362,7 +376,7 @@ export function BookOpen({
             </div>
 
             {/* The front board: the cover outside, a bookplate inside. */}
-            <div ref={coverRef} className="ob-cover" style={{ transform: `${coverZ} rotateY(${g.wide ? -180 : 0}deg)`, opacity: g.wide ? 1 : 0 }}>
+            <div ref={coverRef} className="ob-cover" style={{ transform: `${coverZ} rotateY(${g.wide ? -180 : -90}deg)`, opacity: 1 }}>
               <div className="ob-face ob-cover-front">
                 <Cover book={book} look={look} eager />
               </div>
