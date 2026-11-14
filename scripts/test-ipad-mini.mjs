@@ -25,9 +25,14 @@ await send('Page.navigate',{url:baseUrl+'/read/on-a-piece-of-chalk'});
 await until('!!document.querySelector(".prose-read")');
 await until(`Object.keys(document.querySelector('button[aria-label=\"Appearance and answers\"]')).some(k=>k.startsWith('__reactProps$'))`);
 console.log('Reader loaded');
-for(const [width,height] of (process.argv.includes('--keyboard-only') ? [] : [[744,1133],[1133,744],[768,1024],[1024,768],[375,667]])) {
+for(const [width,height] of (process.argv.includes('--keyboard-only') ? [] : [[744,1133],[820,1180],[1024,1366],[1133,744],[768,1024],[1024,768],[375,667],[390,844],[430,932]])) {
  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:2,mobile:true});
  await evaluate('window.scrollTo(0,0)');await sleep(200);
+ if(height>width) {
+  const margins=await evaluate(`(()=>{const r=document.querySelector('.prose-read').getBoundingClientRect();return {left:r.left,right:innerWidth-r.right}})()`);
+  assert.ok(Math.abs(margins.left-margins.right)<2,'Portrait reading margins must match: '+JSON.stringify(margins));
+  assert.ok(margins.left>=16&&margins.right>=16);
+ }
  await evaluate(`document.querySelector('button[aria-label="Appearance and answers"]').click()`);
  await until(`!!document.querySelector('[role="dialog"][aria-label="Appearance and answers"]')`);
  await evaluate(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent==='Answers').click()`);await sleep(200);

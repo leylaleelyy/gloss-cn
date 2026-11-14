@@ -29,9 +29,11 @@ await evaluate(`localStorage.setItem('gloss:v1',JSON.stringify({glosses:{},highl
 await send('Page.navigate',{url:baseUrl+'/library'});
 await until('!!document.querySelector("[data-book=layout-test]")');
 const open=async()=>{await evaluate(`document.querySelector('[data-book="layout-test"]').click()`);await until(`!!document.querySelector('.ob-cover-front img')`);
+const clipped = await evaluate(`new Promise(resolve=>{let bad=false;const start=performance.now();function frame(){const stage=document.querySelector('.ob-stage');if(stage?.dataset.layout==='single'){for(const selector of ['.ob-page','.ob-cover-front']){const el=document.querySelector(selector),r=el.getBoundingClientRect();if(r.left<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight+1)bad=true;}}if(performance.now()-start<500)requestAnimationFrame(frame);else resolve(bad);}frame();})`);
+assert.equal(clipped,false,'Portrait opening stays within the viewport throughout the animation');
 assert.equal(await evaluate(`getComputedStyle(document.querySelector('.ob-cover-front img')).animationName`),'none');
 await until(`document.querySelector('.ob-stage')?.dataset.phase==='open'`);await sleep(650)};
-for(const [width,height] of [[744,1133],[1133,744],[375,667],[1024,768]]) {
+for(const [width,height] of [[744,1133],[820,1180],[1024,1366],[1133,744],[375,667],[390,844],[430,932],[1024,768]]) {
  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
  await open();
  const state=await evaluate(`(()=>{const p=document.querySelector('.ob-page-in'),d=document.querySelector('.ob-dek'),t=document.querySelector('.ob-title');return {text:d.textContent,clamp:getComputedStyle(d).webkitLineClamp,dekHeight:d.clientHeight,dekScroll:d.scrollHeight,titleHeight:t.clientHeight,titleScroll:t.scrollHeight,width:p.clientWidth,scrollWidth:p.scrollWidth,animations:[...document.querySelectorAll('.ob-book,.ob-cover,.ob-shift')].flatMap(e=>e.getAnimations()).length,front:getComputedStyle(document.querySelector('.ob-cover-front')).visibility}})()`);

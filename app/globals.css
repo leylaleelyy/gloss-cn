@@ -2229,3 +2229,15 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   margin-top: -10px; padding-block: 8px; background: var(--bg-raised);
 }
 .gloss-margin .study-content { max-height: none; overflow: visible; }
+
+/* Center the reading column itself in portrait, without a one-sided number gutter. */
+@media (orientation: portrait) {
+  .reader-grid,
+  .reader-grid:not([data-left-collapsed="true"]),
+  .reader-grid[data-left-collapsed="true"] { grid-template-columns: minmax(0, var(--m)); }
+  .reader-grid > .rg-rail,
+  .reader-grid > .rg-numgap,
+  .reader-grid > .rg-gutter,
+  .reader-grid > .rg-margin { display: none; }
+  .prose-read .pnum { display: none; }
+}

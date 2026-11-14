@@ -143,8 +143,8 @@ function ReaderInner({ article }: { article: Article }) {
   const setUI = useStore((s) => s.setUI);
   const setProgress = useStore((s) => s.setProgress);
 
-  const wide = useMedia("(min-width: 960px)", true);
-  const withRail = useMedia("(min-width: 1260px)", true);
+  const wide = useMedia("(min-width: 960px) and (orientation: landscape)", true);
+  const withRail = useMedia("(min-width: 1260px) and (orientation: landscape)", true);
 
   // Reset per-article UI when the article changes.
   useEffect(() => {

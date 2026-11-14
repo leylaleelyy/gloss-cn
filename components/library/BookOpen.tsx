@@ -16,8 +16,8 @@ type Geo = { W: number; H: number; D: number; wide: boolean; vw: number; vh: num
 
 function measure(book: Book): Geo {
   const vw = window.innerWidth, vh = window.innerHeight;
-  const wide = vw >= 720;
-  const W = Math.round(wide ? Math.min(340, (vw - 140) / 2, (vh - 96) / ASPECT) : Math.min(vw - 40, 360, (vh - 110) / ASPECT));
+  const wide = vw >= 720 && vw > vh;
+  const W = Math.round(wide ? Math.min(340, (vw - 140) / 2, (vh - 96) / ASPECT) : Math.min(vw - 40, 480, (vh - 110) / ASPECT));
   const H = Math.round(W * ASPECT);
   const look = lookOf(book);
   return { W, H, D: Math.max(18, Math.round((look.w * H) / look.h)), wide, vw, vh };
@@ -104,23 +104,32 @@ export function BookOpen({
     mounted.current = true;
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
     const end = T(0, 0, 1, -g.D / 2, 0);
-    const opened = `${coverZ} rotateY(-180deg)`;
+    const opened = `${coverZ} rotateY(${g.wide ? -180 : 0}deg)`;
     const shifted = `translateX(${shift}px)`;
     // Inline styles are the settled pose; animations temporarily override them.
     b.style.transform = end;
     c.style.transform = opened;
+    c.style.opacity = g.wide ? "1" : "0";
     s.style.transform = shifted;
     const animations: Animation[] = [];
     if (reduce || desktop) {
       setPhase("open");
     } else {
-      const delay = origin.kind === "spine" ? 700 : 500;
-      const opts: KeyframeAnimationOptions = { duration: 780, delay, easing: easeInOut, fill: "both" };
-      animations.push(
-        b.animate(flight(g, origin), { duration: origin.kind === "spine" ? 840 : 660, fill: "both" }),
-        c.animate([{ transform: `${coverZ} rotateY(0deg)` }, { transform: opened }], opts),
-        s.animate([{ transform: "translateX(0px)" }, { transform: shifted }], opts),
-      );
+      if (!g.wide) {
+        // Portrait stays inside the viewport throughout: lift the cover, then reveal the page.
+        animations.push(
+          b.animate([{ transform: T(0, 12, .96, -g.D / 2, 0), opacity: 0 }, { transform: end, opacity: 1 }], { duration: 320, easing: ease, fill: "both" }),
+          c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, delay: 180, easing: ease, fill: "both" }),
+        );
+      } else {
+        const delay = origin.kind === "spine" ? 700 : 500;
+        const opts: KeyframeAnimationOptions = { duration: 780, delay, easing: easeInOut, fill: "both" };
+        animations.push(
+          b.animate(flight(g, origin), { duration: origin.kind === "spine" ? 840 : 660, fill: "both" }),
+          c.animate([{ transform: `${coverZ} rotateY(0deg)` }, { transform: opened }], opts),
+          s.animate([{ transform: "translateX(0px)" }, { transform: shifted }], opts),
+        );
+      }
       void Promise.all(animations.map(a => a.finished)).then(() => {
         if (!mounted.current || closing.current) return;
         animations.forEach(a => a.cancel());
@@ -150,10 +159,15 @@ export function BookOpen({
     setPhase("out");
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
     if (reduce) return onClose();
-    if (desktop) {
+    if (desktop || !g.wide) {
+      const transform = getComputedStyle(b).transform;
+      const opacity = getComputedStyle(b).opacity;
+      b.style.transform = transform;
+      b.style.opacity = opacity;
+      [b, c, s].forEach(el => el.getAnimations().forEach(a => a.cancel()));
       const exit = s.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: "forwards" });
       await exit.finished.catch(() => {});
-      onClose();
+      if (mounted.current) onClose();
       return;
     }
     const opts: KeyframeAnimationOptions = { duration: 540, easing: easeInOut, fill: "forwards" };
@@ -348,7 +362,7 @@ export function BookOpen({
             </div>
 
             {/* The front board: the cover outside, a bookplate inside. */}
-            <div ref={coverRef} className="ob-cover" style={{ transform: `${coverZ} rotateY(-180deg)` }}>
+            <div ref={coverRef} className="ob-cover" style={{ transform: `${coverZ} rotateY(${g.wide ? -180 : 0}deg)`, opacity: g.wide ? 1 : 0 }}>
               <div className="ob-face ob-cover-front">
                 <Cover book={book} look={look} eager />
               </div>

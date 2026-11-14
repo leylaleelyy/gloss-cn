@@ -2096,3 +2096,7 @@ button.starter-card:active {
 /* A phone shows the information page, never a cropped half of the bookplate. */
 .ob-stage[data-layout="single"][data-phase="open"] .ob-cover,
 .ob-stage[data-layout="single"][data-phase="leaving"] .ob-cover { visibility: hidden; }
+
+/* Portrait uses a single face, so no hidden bookplate sweeps outside the screen. */
+.ob-stage[data-layout="single"] .ob-cover-inside { display: none; }
+.ob-stage[data-layout="single"] .ob-backdrop { transition-delay: 0s; }
