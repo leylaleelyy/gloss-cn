@@ -26,6 +26,7 @@ import { Margin } from "./Margin";
 import { Notebook } from "./Notebook";
 import { Peek, Shortcuts, Toast } from "./Overlays";
 import { Rail } from "./Rail";
+import { WordWise } from "./WordWise";
 import { TopBar } from "./TopBar";
 import { VocabularyHighlights } from "./VocabularyHighlights";
 
@@ -602,6 +603,7 @@ function ReaderInner({ article }: { article: Article }) {
 
         <Lens rootEl={articleEl} openHighlight={openHl} />
         <VocabularyHighlights root={articleEl} />
+        <WordWise root={articleEl} />
         <ListenBar />
         <SignInNudge />
         <Notebook />

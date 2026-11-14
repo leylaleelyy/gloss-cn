@@ -1,10 +1,10 @@
 export const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 export type Level = typeof LEVELS[number];
-export type LearningPreferences = { level: Level; display: "bilingual" | "english" | "native"; highlight: boolean };
-export const DEFAULT_LEARNING: LearningPreferences = { level: "B1", display: "bilingual", highlight: true };
+export type LearningPreferences = { level: Level; display: "bilingual" | "english" | "native"; highlight: boolean; wordWise: boolean };
+export const DEFAULT_LEARNING: LearningPreferences = { level: "B1", display: "bilingual", highlight: true, wordWise: false };
 export function learningPreferences(raw: unknown): LearningPreferences {
   const value = (raw && typeof raw === "object" ? raw : {}) as Partial<LearningPreferences>;
-  return { level: LEVELS.includes(value.level as Level) ? value.level! : "B1", display: ["bilingual", "english", "native"].includes(value.display ?? "") ? value.display! : "bilingual", highlight: typeof value.highlight === "boolean" ? value.highlight : true };
+  return { wordWise: value.wordWise === true, level: LEVELS.includes(value.level as Level) ? value.level! : "B1", display: ["bilingual", "english", "native"].includes(value.display ?? "") ? value.display! : "bilingual", highlight: typeof value.highlight === "boolean" ? value.highlight : true };
 }
 export type Definition = { word: string; partOfSpeech: string; pronunciation: string; english: string; native: string };
 export type Analysis = { simplified: string; translation: string; chunks: string[]; backbone: string; grammar: { part: string; explanation: string }[]; vocabulary: Definition[] };

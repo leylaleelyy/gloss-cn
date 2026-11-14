@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+const learning = await import('../lib/learning.ts');
+const source = readFileSync(new URL('../lib/word-wise.ts', import.meta.url), 'utf8').replace(/^import .*;\n/, '').replaceAll('export ', '');
+const { wiseHints } = new Function('normalizeWord', 'vocabularyMatcher', stripTypeScriptTypes(source) + '\nreturn {wiseHints};')(learning.normalizeWord, learning.vocabularyMatcher);
+const entries = [{id:'a',word:'intricate',surface:'intricate',status:'new',english:'with many small connected parts that form a complex whole; difficult to understand.'}, {id:'b',word:'chalk',surface:'chalk',status:'mastered',english:'soft white rock'}];
+const text = '😀 intricate chalk and obscure words.';
+const hints = wiseHints(text, [{word:'intricate',meaning:'complex'},{word:'chalk',meaning:'rock'},{word:'obscure',meaning:'not well known'},{word:'absent',meaning:'missing'}], entries);
+assert.equal(hints.length, 2);
+assert.equal(text.slice(hints[0].from, hints[0].to), 'intricate');
+assert.equal(hints[0].meaning, entries[0].english);
+assert.equal(text.slice(hints[1].from, hints[1].to), 'obscure');
+assert.equal(learning.learningPreferences({}).wordWise, false);
+assert.equal(learning.learningPreferences({wordWise:true,level:'C2'}).level, 'C2');
+const block = readFileSync(new URL('../components/reader/Block.tsx', import.meta.url), 'utf8');
+assert.ok(!block.includes('className="word-wise-hint"'));
+assert.match(block, /data-wise-from=\{hint.from\}/);
+assert.ok(!block.includes('<ruby'));
+console.log('Word Wise: notebook priority, mastered exclusion, UTF-16 offsets, missing words, preferences and text-free annotations passed.');
+
+const again = wiseHints(text, [], entries);
+assert.equal(again[0].meaning, entries[0].english, 'Long notebook definitions must not be shortened');
+const revised = entries.map(e => e.id === 'a' ? {...e, english: 'a revised complete definition'} : e);
+assert.equal(wiseHints(text, [], revised)[0].meaning, revised[0].english, 'Notebook edits invalidate compiled matchers');
+console.log('Full definitions and notebook cache invalidation passed.');
+
+const store = await import('../lib/word-wise-store.ts');
+let affected = 0, unrelated = 0;
+const off = store.subscribeWiseHints('a', () => affected++);
+const cleanups = Array.from({length:4000}, (_, i) => store.subscribeWiseHints('other'+i, () => unrelated++));
+store.setWiseHints('a', hints);
+store.setWiseHints('a', hints.map(h => ({...h})));
+assert.equal(affected, 1, 'Identical hints must not trigger layout updates');
+assert.equal(unrelated, 0, 'Updating one paragraph must not notify the rest of a long book');
+store.clearWiseHints();
+assert.equal(affected, 2);
+assert.equal(store.getWiseHints('a'), undefined);
+assert.equal(unrelated, 0);
+off(); cleanups.forEach(fn => fn());
+console.log('4,000-paragraph subscription isolation and clearing passed.');
+
+const compact = wiseHints('intricate obscure', [{word:'intricate',meaning:'complex'},{word:'obscure',meaning:'not easily or widely understood by anyone'}], entries);
+assert.equal(compact[0].short, 'complex');
+assert.equal(compact[0].meaning, entries[0].english);
+assert.equal(compact[1].short, undefined, 'Never truncate a sentence into a misleading inline fragment');
+console.log('Short synonyms retain notebook definitions and reject long inline fragments.');

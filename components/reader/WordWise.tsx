@@ -1,0 +1,147 @@
+'use client';
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { clearWiseHints, getWiseHints, setWiseHints, subscribeWiseHints } from '@/lib/word-wise-store';
+import { create } from 'zustand';
+import { useLearning, setLearning } from '@/lib/learning-store';
+import { LEVELS } from '@/lib/learning';
+import { readProvider } from '@/lib/provider-config';
+import { loadWiseWords } from '@/lib/word-wise-source';
+import { type WiseWord } from '@/lib/word-wise';
+import { useReader } from './context';
+import { Languages, ChevronDown, Check, LoaderCircle, AlertCircle } from 'lucide-react';
+import { acquireVocabularyComputer } from '@/lib/vocabulary-worker';
+import { observeInlineWiseHints } from '@/lib/word-wise-layout';
+import { startGloss } from '@/lib/ask';
+import { useStore } from '@/lib/store';
+import { Popover, barBtn } from '@/components/ui/Popover';
+const useWise = create<{ error: string; loading: boolean }>(() => ({ error: '', loading: false }));
+const serverHints = () => undefined;
+export function useWiseHints(id: string) {
+  return useSyncExternalStore(useCallback(listener => subscribeWiseHints(id, listener), [id]), useCallback(() => getWiseHints(id), [id]), serverHints);
+}
+export function WordWiseControl() {
+  const p = useLearning(s => s.preferences);
+  const error = useWise(s => s.error);
+  const loading = useWise(s => s.loading);
+  const descriptions = ['入门 · 基础词汇', '初级 · 日常表达', '中级 · 独立阅读', '中高级 · 复杂文章', '高级 · 专业表达', '精通 · 仅罕见词'];
+  return <div className="word-wise-controls flex shrink-0 items-center">
+    <button type="button" className={`${barBtn} word-wise-toggle`} aria-label="Word Wise" aria-pressed={p.wordWise}
+      data-tip={p.wordWise ? '关闭 Word Wise' : '开启 Word Wise'} onClick={() => setLearning({ wordWise: !p.wordWise })}>
+      {loading ? <LoaderCircle size={18} className="animate-spin" aria-hidden /> : error && p.wordWise ? <AlertCircle size={18} aria-hidden /> : <Languages size={18} strokeWidth={1.8} aria-hidden />}
+      <span className="toolbar-label">Word Wise</span>
+    </button>
+    {p.wordWise && <Popover label="Word Wise 英语等级" tip="英语等级" triggerClass={`${barBtn} word-wise-level`} width={288}
+      trigger={<><span className="tabular-nums text-xs">{p.level}</span><ChevronDown size={12} aria-hidden /></>}>
+      {close => <div>
+        <p className="text-sm font-medium text-ink">英语等级</p>
+        <p className="mt-1 mb-3 text-xs leading-relaxed text-ink-3">行内显示简单近义词；点词打开 Dictionary。短注释不改变词宽或行距，放不下时仅标记单词。</p>
+        <div role="group" aria-label="选择英语等级" className="grid gap-1">
+          {LEVELS.map((level, i) => <button key={level} type="button" aria-pressed={p.level === level}
+            className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left transition-colors ${p.level === level ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk'}`}
+            onClick={() => { setLearning({ level }); close(); }}>
+            <span className="w-6 text-sm font-medium tabular-nums">{level}</span><span className="flex-1 text-xs">{descriptions[i]}</span>{p.level === level && <Check size={16} className="text-rubric" aria-hidden />}
+          </button>)}
+        </div>
+        {loading && <p role="status" className="mt-3 text-xs text-ink-3">正在生成附近段落的释义…</p>}
+        {error && <div role="status" className="mt-3 border-t border-rule pt-3"><p className="text-xs leading-relaxed text-ink-3">{error}</p><button type="button" className="mt-2 text-xs font-medium text-rubric" onClick={() => window.dispatchEvent(new Event('gloss:provider'))}>重新生成释义</button></div>}
+      </div>}
+    </Popover>}
+  </div>;
+}
+export function WordWise({ root }: { root: HTMLElement | null }) {
+  const { ix } = useReader();
+  const prefs = useLearning(s => s.preferences);
+  const entries = useLearning(s => s.entries);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!root || !prefs.wordWise) return;
+    const open = (event: MouseEvent | KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const mark = target?.closest<HTMLElement>('[data-wise-from]');
+      if (!mark || target?.closest('a')) return;
+      if (event instanceof MouseEvent && (event.button !== 0 || event.detail > 1 || !window.getSelection()?.isCollapsed)) return;
+      if (event instanceof KeyboardEvent && (event.key !== 'Enter' && event.key !== ' ')) return;
+      const blockId = mark.closest<HTMLElement>('[data-block]')?.dataset.block;
+      if (!blockId) return;
+      const from = Number(mark.dataset.wiseFrom), to = Number(mark.dataset.wiseTo);
+      const hint = getWiseHints(blockId)?.find(h => h.from === from && h.to === to);
+      if (!hint) return;
+      event.preventDefault(); event.stopPropagation();
+      const anchor = { start: { b: blockId, o: from }, end: { b: blockId, o: to }, quote: (ix.texts.get(blockId) ?? '').slice(from, to) };
+      const existing = (useStore.getState().glosses[ix.article.id] ?? []).find(g => g.action === 'define' && g.anchor?.start.b === blockId && g.anchor.start.o === from && g.anchor.end.b === blockId && g.anchor.end.o === to);
+      if (existing) useStore.getState().setUI({ activeGloss: existing.id, activeHighlight: null, focusMode: false });
+      else startGloss(ix, { anchor, action: 'define' });
+    };
+    root.addEventListener('click', open, true);
+    root.addEventListener('keydown', open, true);
+    return () => { root.removeEventListener('click', open, true); root.removeEventListener('keydown', open, true); };
+  }, [root, ix, prefs.wordWise]);
+  useLayoutEffect(() => {
+    if (!root || !prefs.wordWise) return;
+    root.dataset.wiseInline = 'true';
+    const dispose = observeInlineWiseHints(root);
+    return () => { delete root.dataset.wiseInline; dispose(); };
+  }, [root, prefs.wordWise]);
+  useEffect(() => { const retry = () => setRevision(n => n + 1); window.addEventListener('gloss:provider', retry); window.addEventListener('online', retry); return () => { window.removeEventListener('gloss:provider', retry); window.removeEventListener('online', retry); }; }, []);
+  useEffect(() => {
+    clearWiseHints();
+    useWise.setState({ error: '', loading: false });
+    if (!prefs.wordWise || !root) return;
+    let stopped = false, busy = false, failed = false;
+    const controller = new AbortController(), visible = new Set<string>(), done = new Set<string>();
+    const { computer, release } = acquireVocabularyComputer(entries);
+    const positions = new Map<string, number>();
+    let lastScroll = 0;
+    const onScroll = () => { lastScroll = performance.now(); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    const progress = new Map<string, { offset: number; words: WiseWord[] }>();
+    const blocks = new Map(ix.article.blocks.map(b => [b.id, b]));
+    let timer: ReturnType<typeof setTimeout>;
+    const apply = async (id: string, text: string, words: WiseWord[]) => {
+      const hints = await computer.hints(text, words, controller.signal);
+      if (!stopped) setWiseHints(id, hints);
+    };
+    const pump = async () => {
+      if (stopped || busy) return;
+      // Let touch scrolling settle before updating text layout. Fetch nearby text first.
+      if (performance.now() - lastScroll < 120) { timer = setTimeout(pump, 120); return; }
+      const center = window.scrollY + window.innerHeight / 2;
+      const id = [...visible].filter(id => !done.has(id)).sort((a, b) => Math.abs((positions.get(a) ?? center) - center) - Math.abs((positions.get(b) ?? center) - center))[0];
+      if (!id) return;
+      const block = blocks.get(id); if (!block) return;
+      done.add(id); busy = true;
+      const fullText = block.runs.map(r => r.text).join('');
+      const part = progress.get(id) ?? { offset: 0, words: [] };
+      let end = Math.min(fullText.length, part.offset + 5000);
+      if (end < fullText.length) { const boundary = fullText.lastIndexOf(' ', end); if (boundary > part.offset) end = boundary; }
+      const text = fullText.slice(part.offset, end);
+      try {
+        await apply(id, fullText, part.words);
+        if (/[a-zA-Z]{3}/.test(text)) {
+          const provider = readProvider();
+          const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`v4:${provider.baseUrl}:${provider.model}:${prefs.level}:${text}`));
+          const url = new URL('/__word-wise/' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join(''), location.origin).href;
+          const words = await loadWiseWords(url, text, prefs.level, controller.signal, !failed, () => useWise.setState({ loading: true }));
+          if (stopped) return;
+          if (words !== undefined) {
+            part.words.push(...words);
+            await apply(id, fullText, part.words);
+          }
+        }
+        if (end < fullText.length) { progress.set(id, { offset: end, words: part.words }); done.delete(id); }
+      } catch (e) { if (!stopped) { failed = true; useWise.setState({ error: e instanceof Error ? e.message : '释义生成失败' }); } }
+      finally { busy = false; if (!stopped) { useWise.setState({ loading: false }); timer = setTimeout(pump, 40); } }
+    };
+    const observer = new IntersectionObserver(changes => {
+      for (const change of changes) {
+        const id = (change.target as HTMLElement).dataset.block!;
+        if (change.isIntersecting) { visible.add(id); positions.set(id, change.boundingClientRect.top + window.scrollY); }
+        else { visible.delete(id); positions.delete(id); }
+      }
+      clearTimeout(timer); timer = setTimeout(pump, 120);
+    }, { rootMargin: '1600px' });
+    root.querySelectorAll<HTMLElement>('[data-block]').forEach(el => { if (['p', 'li', 'quote', 'note'].includes(blocks.get(el.dataset.block!)?.type || '')) observer.observe(el); });
+    return () => { stopped = true; window.removeEventListener('scroll', onScroll); clearTimeout(timer); controller.abort(); release(); observer.disconnect(); clearWiseHints(); useWise.setState({ loading: false }); };
+  }, [ix, root, prefs.wordWise, prefs.level, entries, revision]);
+  return null;
+}

@@ -5,7 +5,7 @@ const match = vocabularyMatcher([entry("run", "ran"), entry("in spite of"), entr
 const text = "😀 Ran running RUN in spite of rain; in, spite of café known reader's.";
 assert.deepEqual(match(text).map(h => text.slice(h.from, h.to)), ["Ran", "RUN", "in spite of", "café", "reader's"]);
 assert.deepEqual(vocabularyMatcher([entry("river"), entry("river bank")])("river bank").map(x => x.id), ["river bank"]);
-assert.deepEqual(learningPreferences({ level: "Z9", display: "broken" }), { level: "B1", display: "bilingual", highlight: true });
+assert.deepEqual(learningPreferences({ level: "Z9", display: "broken" }), { level: "B1", display: "bilingual", highlight: true, wordWise: false });
 assert.throws(() => definition({ word: "bank" })); assert.throws(() => analysis({ simplified: "partial" }));
 const many = vocabularyMatcher(Array.from({ length: 10000 }, (_, i) => entry(`word${i}`)));
 const begin = performance.now(); assert.equal(many("word9999 word2 unknown running").length, 2);

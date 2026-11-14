@@ -77,3 +77,16 @@ voices. Desktop pronunciation uses the bundled eSpeak runtime and PipeWire.
 The Web build never executes desktop audio commands.
 
 Keep `.open-next/`, `.wrangler/`, `.dev.vars*`, and local `.env*` files out of Git.
+
+### Word Wise reading hints
+
+Use the reader toolbar's Word Wise toggle to show short English hints above unfamiliar
+words, and choose your English level (A1–C2) beside it. Tap a marked word to open its
+dictionary card. Notebook definitions take priority and mastered words are excluded.
+New AI hints use your configured provider; cached and notebook hints remain available
+when the provider is unavailable. Async hints preserve paragraph positions and share
+a background worker with vocabulary highlighting.
+
+Validation: `npm run test:word-wise` and `npm run test:learning`. With a local server
+running, set `GLOSS_TEST_URL` and run `npm run test:word-wise-reader` and
+`npm run test:ipad` for isolated Chromium touch-layout checks with mocked AI replies.

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { WordWiseControl } from "./WordWise";
 import { useEffect, useRef, useState } from "react";
 import { BookOpenText, Keyboard, NotebookPen } from "lucide-react";
 import { Account } from "@/components/account/Account";
@@ -116,14 +117,15 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
           </div>
         </div>
 
-        <nav aria-label="Reader tools" className="flex items-center gap-1">
+        <nav aria-label="Reader tools" className="reader-tools flex items-center gap-1">
+          <WordWiseControl />
           <span className="hidden sm:block">
             <button type="button" className={barBtn} onClick={() => setUI({ shortcutsOpen: true })} aria-label="Keyboard shortcuts" data-tip="Shortcuts" data-tip-kbd="?">
               <Keyboard size={17} strokeWidth={1.8} />
             </button>
           </span>
           <ListenButton from={listenFrom} />
-          <Link href="/vocabulary" className={`${barBtn} !px-3 gap-2`} title="Vocabulary" aria-label="Vocabulary"><BookOpenText size={17} aria-hidden /><span className="hidden sm:inline">Vocabulary</span></Link>
+          <Link href="/vocabulary" className={`${barBtn} !px-3 gap-2`} title="Vocabulary" aria-label="Vocabulary"><BookOpenText size={17} aria-hidden /><span className="toolbar-label">Vocabulary</span></Link>
           <SettingsMenu />
           <KeyMenu />
           <button
@@ -136,7 +138,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
             data-tip-kbd="N"
           >
             <NotebookPen size={16} strokeWidth={1.8} />
-            <span className="hidden sm:inline">Notebook</span>
+            <span className="toolbar-label">Notebook</span>
             {count > 0 && (
               <span className="min-w-[18px] rounded-full bg-[var(--rubric)] px-1.5 text-center text-[11px] font-semibold leading-[18px] tabular-nums text-white">{count}</span>
             )}

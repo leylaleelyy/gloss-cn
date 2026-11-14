@@ -2124,3 +2124,44 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
 [data-face="huiwen"] .prose-read .blk[data-type="h3"],
 [data-face="arphic"] .prose-read .blk[data-type="h2"],
 [data-face="arphic"] .prose-read .blk[data-type="h3"] { font-family: inherit; }
+
+/* Paint-only word markers: async definitions never change text metrics. */
+.word-wise {
+  cursor: pointer; text-decoration: underline dotted; text-decoration-color: var(--ink-3);
+  text-decoration-thickness: 1px; text-underline-offset: .18em;
+}
+.word-wise:focus-visible { outline: 2px solid var(--rubric); outline-offset: 2px; }
+/* Reserve the same annotation lane on every prose line once the mode is enabled.
+   Async labels are absolutely positioned within the original word width. */
+.prose-read[data-wise-inline="true"] { line-height: max(var(--leading), 2.15); }
+.word-wise { position: relative; }
+.word-wise-short {
+  position: absolute; inset-inline: 0; bottom: calc(100% + .08em);
+  /* Lower the label within the reserved lane without changing line metrics. */
+  transform: translateY(.35em);
+  font: 400 clamp(10px, .52em, 12px)/1.1 var(--font-sans), sans-serif;
+  text-align: center; text-indent: 0; letter-spacing: 0; white-space: nowrap;
+  color: var(--ink-3); pointer-events: none; user-select: none; -webkit-user-select: none;
+  visibility: hidden;
+}
+.word-wise-short::after { content: attr(data-short); }
+.word-wise-short[data-fit="true"] { visibility: visible; }
+
+.word-wise-toggle[aria-pressed="true"] { color: var(--rubric); background: var(--bg-sunk); }
+
+/* A single toolbar grammar: labelled controls on wide screens, icons on compact screens. */
+.toolbar-label { display: none; white-space: nowrap; }
+.reader-tools { flex-shrink: 0; }
+.reader-tools svg { flex-shrink: 0; }
+.reader-tools button:focus-visible, .reader-tools a:focus-visible {
+  outline: 2px solid var(--rubric); outline-offset: 3px;
+}
+.reader-tools button[aria-pressed="true"] { background-color: var(--bg-sunk); color: var(--rubric); }
+.reader-tools .word-wise-level { min-width: 0; gap: 3px; padding-inline: 6px; }
+@media (min-width: 1440px) { .reader-tools .toolbar-label { display: inline; } }
+@media (max-width: 1439px) { .reader-tools .toolbar-count { display: none; } }
+@media (max-width: 640px) {
+  .reader-tools { gap: 0; }
+  .reader-tools > .word-wise-controls { gap: 0; }
+  .reader-tools .word-wise-level { min-width: 40px; }
+}

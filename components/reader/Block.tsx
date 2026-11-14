@@ -1,6 +1,8 @@
 "use client";
 
-import { memo, useState, type ReactNode } from "react";
+import { Fragment, memo, useState, type ReactNode } from "react";
+import { useWiseHints } from "./WordWise";
+import type { WiseHint } from "@/lib/word-wise";
 import { MessageCirclePlus } from "lucide-react";
 import type { Block as BlockT, Run } from "@/lib/article";
 
@@ -23,7 +25,7 @@ type Props = {
   onAsk: (blockId: string) => void;
 };
 
-function wrapRun(run: Run, text: string, key: string): ReactNode {
+function wrapRun(run: Run, text: ReactNode, key: string): ReactNode {
   let node: ReactNode = text;
   if (run.code) node = <code>{node}</code>;
   if (run.strong) node = <strong>{node}</strong>;
@@ -34,7 +36,7 @@ function wrapRun(run: Run, text: string, key: string): ReactNode {
         {node}
       </a>
     );
-  return <span key={key}>{node}</span>;
+  return <Fragment key={key}>{node}</Fragment>;
 }
 
 /**
@@ -42,9 +44,9 @@ function wrapRun(run: Run, text: string, key: string): ReactNode {
  * marks that cover it. Offsets are over the block's plain text, the same
  * coordinates anchors use, so highlights never drift.
  */
-function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hoverGloss: string | null, activeHighlight: string | null, fresh: string | null) {
+function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hoverGloss: string | null, activeHighlight: string | null, fresh: string | null, hints: WiseHint[] = [], dropCap = false) {
   const runs = block.runs;
-  if (!marks.length) return runs.map((r, i) => wrapRun(r, r.text, String(i)));
+  if (!marks.length && !hints.length) return runs.map((r, i) => wrapRun(r, r.text, String(i)));
 
   const bounds: number[] = [];
   let acc = 0;
@@ -54,7 +56,7 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
   }
   const len = acc;
   const cuts = new Set<number>([0, len, ...bounds]);
-  for (const m of marks) {
+  for (const m of [...marks, ...hints]) {
     cuts.add(Math.max(0, Math.min(len, m.from)));
     cuts.add(Math.max(0, Math.min(len, m.to)));
   }
@@ -67,7 +69,9 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
     if (b <= a) continue;
     while (ri < runs.length - 1 && bounds[ri + 1] <= a) ri++;
     const run = runs[ri];
-    const text = run.text.slice(a - bounds[ri], b - bounds[ri]);
+    const raw = run.text.slice(a - bounds[ri], b - bounds[ri]);
+    const hint = !run.href ? hints.find(h => h.from <= a && h.to >= b) : undefined;
+    const text = hint ? <span className="word-wise" role="button" tabIndex={a === hint.from ? 0 : -1} aria-label={`查看 ${block.runs.map(r => r.text).join("").slice(hint.from, hint.to)} 的释义`} data-wise-from={hint.from} data-wise-to={hint.to}>{raw}{hint.short && !(dropCap && hint.from === 0) && a === hint.from && b === hint.to && !/\s/.test(raw) && <span className="word-wise-short" data-short={hint.short} aria-hidden="true" />}</span> : raw;
     const covering = marks.filter((m) => m.from <= a && m.to >= b);
     const key = `${a}`;
     if (!covering.length) {
@@ -182,7 +186,8 @@ function Table({ rows, head }: { rows: string[][]; head?: boolean }) {
 
 function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHighlight, fresh, cursor, hasAt, onAsk }: Props) {
   const Tag = block.type === "h2" ? "h2" : block.type === "h3" ? "h3" : block.type === "figure" ? "figure" : "div";
-  const content = segments(block, marks, activeGloss, hoverGloss, activeHighlight, fresh);
+  const hints = useWiseHints(block.id);
+  const content = segments(block, marks, activeGloss, hoverGloss, activeHighlight, fresh, hints, first);
   return (
     <Tag
       className={`blk${first ? " is-first" : ""}${cursor ? " is-cursor" : ""}`}
