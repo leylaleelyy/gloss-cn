@@ -18,7 +18,7 @@ import { loadDoc, useStore, type LibraryItem } from "./store";
 const inflight = new Set<string>();
 /** The free allowance ran out: stop sorting quietly until the next visit. */
 let resting = false;
-if (typeof window !== "undefined") window.addEventListener("gloss:provider", () => { resting = false; });
+if (typeof window !== "undefined") window.addEventListener("gloss:provider", () => { resting = false; void backfill(useStore.getState().library); });
 
 type Text = Pick<Article, "id" | "title" | "author" | "source" | "dek"> & { blocks?: Article["blocks"] };
 
@@ -42,7 +42,7 @@ export async function shelveText(a: Text): Promise<void> {
     const s = (await res.json()) as Shelving;
     const st = useStore.getState();
     const cur = st.library.find((x) => x.id === a.id);
-    if (!cur || cur.topic) return;
+    if (!cur || (cur.topic && cur.topic !== "unsorted") || s.topic === "unsorted") return;
     st.shelve(a.id, { topic: s.topic, tags: s.tags.length ? s.tags : undefined, scene: s.scene });
   } catch {
     // Unsorted is a fine place to wait.
@@ -56,7 +56,7 @@ let backfilling = false;
 /** Sort what was shelved before the library existed: two at a time, a few dozen a visit. */
 export async function backfill(items: LibraryItem[], limit = 40): Promise<void> {
   if (backfilling || resting) return;
-  const todo = items.filter((x) => !x.topic && x.origin !== "sample").slice(0, limit);
+  const todo = items.filter((x) => (!x.topic || x.topic === "unsorted") && x.origin !== "sample").slice(0, limit);
   if (!todo.length) return;
   backfilling = true;
   try {

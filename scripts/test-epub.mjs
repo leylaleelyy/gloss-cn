@@ -41,3 +41,12 @@ assert.equal((await epubToArticle(file(v2))).blocks.length, book.blocks.length);
 await assert.rejects(epubToArticle(new File(["not a zip"], "bad.epub")), /damaged or encrypted/);
 await writeFile('/tmp/gloss-epub-fixture.epub', new Uint8Array(await file(fixture).arrayBuffer()));
 console.log("PASS: EPUB 2/3 metadata, Chinese text, spine order, formatting, embedded images, unique anchors, missing chapters, DRM and corrupt archives.");
+
+const withNav = { ...fixture,
+  "Books/package.opf": strToU8(pack.replace("<manifest>", '<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')),
+  "Books/nav.xhtml": strToU8('<html><body><nav epub:type="toc"><ol><li><a href="Text/first%20chapter.xhtml">第一章</a></li><li><a href="Text/second.xhtml">Second chapter</a></li></ol></nav></body></html>'),
+};
+const navigable = await epubToArticle(file(withNav));
+assert.deepEqual(navigable.toc.map(x => x.title), ["第一章", "Second chapter"]);
+assert.ok(navigable.toc.every(x => navigable.blocks.some(b => b.id === x.id)));
+console.log("PASS: EPUB navigation titles resolve to saved reading blocks.");

@@ -169,6 +169,7 @@ export async function completeJSON<T>(req: {
         model: model.id,
         temperature: 0.3,
         max_tokens: req.maxTokens ?? 1400,
+        ...(req.thinking !== undefined && new URL(provider.baseUrl).hostname === "api.deepseek.com" ? { thinking: { type: req.thinking ? "enabled" : "disabled" } } : {}),
         response_format: { type: "json_object" },
         messages: req.messages,
       }),

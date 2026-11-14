@@ -103,7 +103,9 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
     };
     const onDown = (e: PointerEvent) => {
       if (boxRef.current?.contains(e.target as Node)) return;
-      dragging.current = rootEl.contains(e.target as Node);
+      // iOS may cancel the pointer when native selection handles take over.
+      // Keep listening to selectionchange during touch selection.
+      dragging.current = e.pointerType === "mouse" && rootEl.contains(e.target as Node);
       // Clicking away from a note keeps it, the way paper would.
       if (lensRef.current?.mode === "note") saveNote();
       if (lensRef.current?.mode === "ask" || lensRef.current?.mode === "note" || lensRef.current?.highlightId) close(false);
@@ -119,10 +121,24 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
       if (t) clearTimeout(t);
       t = setTimeout(evaluate, 140);
     };
+    const onCancel = () => { dragging.current = false; onSel(); };
+    const onContext = (event: MouseEvent) => {
+      if (!window.matchMedia("(any-pointer: coarse)").matches) return;
+      // Only reader prose; links, images and editable fields keep their own menus.
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest(".blk-text") || target.closest("a,input,textarea,[contenteditable]")) return;
+      event.preventDefault();
+      dragging.current = false;
+      onSel();
+    };
+    rootEl.addEventListener("contextmenu", onContext);
+    document.addEventListener("pointercancel", onCancel, true);
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("pointerup", onUp, true);
     document.addEventListener("selectionchange", onSel);
     return () => {
+      rootEl.removeEventListener("contextmenu", onContext);
+      document.removeEventListener("pointercancel", onCancel, true);
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("pointerup", onUp, true);
       document.removeEventListener("selectionchange", onSel);
@@ -188,11 +204,15 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
     const on = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; place(true); }); };
     window.addEventListener("scroll", on, { passive: true });
     window.addEventListener("resize", on);
+    window.visualViewport?.addEventListener("resize", on);
+    window.visualViewport?.addEventListener("scroll", on);
     return () => {
       ro.disconnect();
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("scroll", on);
       window.removeEventListener("resize", on);
+      window.visualViewport?.removeEventListener("resize", on);
+      window.visualViewport?.removeEventListener("scroll", on);
     };
   }, [lens, place]);
 
@@ -388,7 +408,7 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
             </div>
           </form>
         ) : lens.mode === "actions" ? (
-          <div className="no-scrollbar flex max-w-[calc(100vw-24px)] items-center gap-0.5 overflow-x-auto">
+          <div className="selection-actions no-scrollbar flex max-w-[calc(100vw-24px)] items-center gap-0.5 overflow-x-auto">
             <button
               type="button"
               onClick={() => toAsk("")}

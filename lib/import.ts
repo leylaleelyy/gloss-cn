@@ -29,8 +29,8 @@ export async function importFromFile(file: File, onProgress?: (p: number, label?
   const name = file.name.toLowerCase();
   try {
     if (name.endsWith(".epub") || file.type === "application/epub+zip") {
-      const { epubToArticle } = await import("./epub");
-      return { ok: true, article: await epubToArticle(file, onProgress) };
+      const { parseBook } = await import("./book-import");
+      return { ok: true, article: await parseBook(file, onProgress) };
     }
     if (name.endsWith(".pdf") || file.type === "application/pdf") {
       const { pdfToArticle, PdfError } = await import("./pdf");
@@ -42,10 +42,8 @@ export async function importFromFile(file: File, onProgress?: (p: number, label?
       }
     }
     if (/\.(txt|md|markdown|text)$/.test(name) || file.type.startsWith("text/")) {
-      const a = textToArticle(await file.text(), { origin: "file" });
-      if (a.title === "Untitled") a.title = file.name.replace(/\.(txt|md|markdown|text)$/i, "").replace(/[_-]+/g, " ");
-      a.source = file.name;
-      return { ok: true, article: a };
+      const { parseBook } = await import("./book-import");
+      return { ok: true, article: await parseBook(file, onProgress) };
     }
     return { ok: false, error: "Gloss reads EPUB, PDF, .txt and .md files." };
   } catch (e) {
@@ -69,7 +67,7 @@ export async function keep(a: Article, file?: Blob, extra?: Partial<LibraryItem>
   // The original is a nicety for reading it again; the text is what matters, so a failure here is quiet.
   if (file) await savePdf(a.id, file);
   useStore.getState().addToLibrary(a, wordCount(a), extra);
-  if (!extra?.topic) void shelveText(a);
+  if (!extra?.topic || extra.topic === "unsorted") void shelveText(a);
   return null;
 }
 

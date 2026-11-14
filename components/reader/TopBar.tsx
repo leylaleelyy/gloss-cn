@@ -2,16 +2,17 @@
 
 import Link from "next/link";
 import { WordWiseControl } from "./WordWise";
+import { Contents } from "./Contents";
 import { useEffect, useRef, useState } from "react";
-import { BookOpenText, Keyboard, NotebookPen } from "lucide-react";
+import { ArrowLeft, BookOpenText, Keyboard, NotebookPen, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Account } from "@/components/account/Account";
-import { Lockup } from "@/components/brand/Gloss";
 import { KeyMenu } from "@/components/ui/KeyMenu";
 import { ListenButton } from "./Listen";
 import { SettingsMenu } from "@/components/ui/SettingsMenu";
 import { barBtn } from "@/components/ui/Popover";
 import { useGlosses, useHighlights, useStore } from "@/lib/store";
 import { useReader } from "./context";
+import { readingScrollBehavior } from "@/lib/reading-motion";
 
 export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number | null; pastTitle: boolean; listenFrom: () => string | null }) {
   const { ix, jumpTo } = useReader();
@@ -21,6 +22,8 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
   const [scrolled, setScrolled] = useState(false);
   const focusMode = useStore((s) => s.focusMode);
   const barRef = useRef<HTMLSpanElement>(null);
+  const showRail = useStore(s => s.settings.rail);
+  const setSettings = useStore(s => s.setSettings);
   const notebookOpen = useStore((s) => s.notebookOpen);
   const setUI = useStore((s) => s.setUI);
   const brief = useStore((s) => s.briefs[ix.article.id]);
@@ -30,7 +33,9 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
   // The progress hairline is written straight to the DOM: no re-render per frame.
   useEffect(() => {
     let last = window.scrollY;
-    const on = () => {
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
       const y = window.scrollY;
       const max = document.documentElement.scrollHeight - window.innerHeight;
       if (barRef.current) barRef.current.style.transform = `scaleX(${max > 0 ? Math.min(1, y / max) : 0})`;
@@ -40,10 +45,12 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
       setScrolledUp(y < last);
       last = y;
     };
-    on();
+    const on = () => { if (!frame) frame = requestAnimationFrame(paint); };
+    paint();
     window.addEventListener("scroll", on, { passive: true });
     window.addEventListener("resize", on);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("scroll", on);
       window.removeEventListener("resize", on);
     };
@@ -72,7 +79,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
     return () => window.removeEventListener("gloss:key", show);
   }, []);
 
-  const tucked = focusMode ? !peek && !scrolledUp && !notebookOpen : hidden && !notebookOpen;
+  const tucked = (focusMode ? !peek && !scrolledUp && !notebookOpen : hidden && !notebookOpen);
 
   const section = (() => {
     if (brief?.status !== "ready" || currentN === null) return null;
@@ -83,19 +90,19 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-40 h-[var(--topbar-h)] transition-[transform,background-color,border-color] duration-300 ease-[var(--ease-out)] ${
+      className={`reader-topbar fixed inset-x-0 top-0 z-40 h-[var(--topbar-h)] transition-[transform,background-color,border-color] duration-300 ease-[var(--ease-out)] ${
         tucked ? "-translate-y-full" : ""
       } ${scrolled ? "border-b border-rule bg-bg/85 backdrop-blur-md" : "border-b border-transparent"}`}
     >
-      <div className="mx-auto flex h-full max-w-[1440px] items-center gap-4 px-4 sm:px-6">
-        <Lockup />
+      <div className="mx-auto flex h-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
+        <Link href="/library" className={`${barBtn} reader-back shrink-0`} aria-label="返回书库 · Back to library" data-tip="返回书库"><ArrowLeft size={18} strokeWidth={1.8} aria-hidden /><span className="hidden sm:inline">Library</span></Link>
 
         {/* Always a spacer; the running title shows in it from tablet width up. */}
         <div className={`flex min-w-0 flex-1 justify-center transition-opacity duration-300 ${pastTitle ? "opacity-100" : "pointer-events-none opacity-0"}`}>
           <div className="hidden h-9 min-w-0 max-w-[560px] items-center gap-2 text-[13.5px] md:flex">
             <button
               type="button"
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              onClick={() => window.scrollTo({ top: 0, behavior: readingScrollBehavior() })}
               className="min-w-0 truncate rounded-full px-2.5 py-1.5 font-serif text-[16px] leading-none text-ink transition-colors hover:bg-sunk"
               data-tip="Back to the top"
             >
@@ -118,29 +125,34 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
         </div>
 
         <nav aria-label="Reader tools" className="reader-tools flex items-center gap-1">
-          <WordWiseControl />
+          <button type="button" className={`${barBtn} !hidden min-[1260px]:!inline-flex`}
+            aria-label={showRail ? "收起左侧导航" : "展开左侧导航"} aria-pressed={showRail}
+            data-tip={showRail ? "收起左侧导航" : "展开左侧导航"} onClick={() => setSettings({ rail: !showRail })}>
+            {showRail ? <PanelLeftClose size={18} strokeWidth={1.8} /> : <PanelLeftOpen size={18} strokeWidth={1.8} />}<span className="toolbar-label">Sidebar</span>
+          </button>
+          <Contents /><WordWiseControl />
           <span className="hidden sm:block">
             <button type="button" className={barBtn} onClick={() => setUI({ shortcutsOpen: true })} aria-label="Keyboard shortcuts" data-tip="Shortcuts" data-tip-kbd="?">
-              <Keyboard size={17} strokeWidth={1.8} />
+              <Keyboard size={18} strokeWidth={1.8} /><span className="toolbar-label">Shortcuts</span>
             </button>
           </span>
           <ListenButton from={listenFrom} />
-          <Link href="/vocabulary" className={`${barBtn} !px-3 gap-2`} title="Vocabulary" aria-label="Vocabulary"><BookOpenText size={17} aria-hidden /><span className="toolbar-label">Vocabulary</span></Link>
+          <Link href="/vocabulary" className={barBtn} data-tip="Vocabulary" aria-label="Vocabulary"><BookOpenText size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Vocabulary</span></Link>
           <SettingsMenu />
           <KeyMenu />
           <button
             type="button"
-            className={`${barBtn} !px-3 ${notebookOpen ? "bg-sunk text-ink" : ""}`}
+            className={`${barBtn} ${notebookOpen ? "bg-sunk text-ink" : ""}`}
             onClick={() => setUI({ notebookOpen: !notebookOpen })}
             aria-pressed={notebookOpen}
             aria-label="Notebook"
             data-tip={notebookOpen ? "Close notebook" : "Your notes and highlights"}
             data-tip-kbd="N"
           >
-            <NotebookPen size={16} strokeWidth={1.8} />
+            <NotebookPen size={18} strokeWidth={1.8} />
             <span className="toolbar-label">Notebook</span>
             {count > 0 && (
-              <span className="min-w-[18px] rounded-full bg-[var(--rubric)] px-1.5 text-center text-[11px] font-semibold leading-[18px] tabular-nums text-white">{count}</span>
+              <span className="toolbar-count min-w-[18px] rounded-full bg-[var(--rubric)] px-1.5 text-center text-[11px] font-semibold leading-[18px] tabular-nums text-white">{count}</span>
             )}
           </button>
           <Account />

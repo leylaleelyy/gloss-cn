@@ -24,7 +24,8 @@
     "cf:deploy": "opennextjs-cloudflare deploy",
     "test:word-wise": "node scripts/test-word-wise.mjs && node scripts/test-word-wise-source.mjs && node scripts/test-vocabulary-worker.mjs",
     "test:word-wise-reader": "node scripts/test-word-wise-reader.mjs",
-    "test:ipad": "node scripts/test-ipad-mini.mjs"
+    "test:ipad": "node scripts/test-ipad-mini.mjs",
+    "test:reader-reliability": "node scripts/test-book-settings.mjs && node scripts/test-store-persistence.mjs && node scripts/test-touch-selection.mjs && node scripts/test-shelving.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.13",

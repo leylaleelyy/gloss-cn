@@ -15,6 +15,8 @@ const mock = createServer(async (req, res) => {
   if (req.url.endsWith("/models")) return res.end(JSON.stringify({ data: [{ id: "test-chat" }] }));
   if (req.url.endsWith("/audio/speech")) { res.setHeader("Content-Type", "audio/mpeg"); return res.end("test-audio"); }
   if (req.url.endsWith("/images/generations")) return res.end(JSON.stringify({ data: [{ b64_json: Buffer.from([255, 216, 255, 217]).toString("base64") }] }));
+  if (typeof body.messages?.[0]?.content === "string" && body.messages[0].content.startsWith("You explain images")) return res.end(JSON.stringify({choices:[{message:{content:"图片展示了河岸，结合文章讨论河流地貌。"}}]}));
+  if (typeof body.messages?.[0]?.content === "string" && body.messages[0].content.startsWith("Provide Word Wise")) return res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({words:[{word:"intricate",meaning:"with many parts",level:"C1"},{word:"absent",meaning:"missing",level:"B2"},{word:"pattern",meaning:"design",level:"A2"}]})}}]}));
   if (body.stream) {
     res.setHeader("Content-Type", "text/event-stream");
     const data = `data: ${JSON.stringify({ choices: [{ delta: { content: "A test answer." } }] })}\r\n\r\ndata: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 4 } })}\r\n\r\ndata: [DONE]\r\n\r\n`;
@@ -53,6 +55,20 @@ try {
   assert.ok(ready, output);
   assert.equal((await (await post("/api/key", config)).json()).ok, true);
   assert.equal((await post("/api/key", { baseUrl: "file:///bad", model: "x" })).status, 400);
+  const visual = await post("/api/image-explain", {image:"data:image/png;base64,iVBORw0KGgo=",title:"River",context:"River banks",language:"zh-CN"});
+  assert.equal(visual.status,200);
+  assert.match((await visual.json()).content,/河岸/);
+  assert.equal(requests.at(-1).body.model,"test-vision");
+  assert.ok(requests.at(-1).body.messages[0].content.includes("Simplified Chinese"));
+  assert.equal(requests.at(-1).body.messages[1].content[0].image_url.url,"data:image/png;base64,iVBORw0KGgo=");
+  assert.equal((await post("/api/image-explain",{image:"file:///etc/passwd"})).status,400);
+  assert.equal((await post("/api/image-explain",{image:"https://127.0.0.1/private"})).status,400);
+  const wise = await post("/api/word-wise", {text:"An intricate pattern.",level:"A2"});
+  assert.equal(wise.status,200);
+  assert.deepEqual((await wise.json()).words,[{word:"intricate",meaning:"with many parts"}]);
+  assert.match(requests.at(-1).body.messages[0].content,/CEFR A2/);
+  assert.deepEqual((await (await post("/api/word-wise",{text:"An intricate pattern.",level:"C2"})).json()).words,[]);
+  assert.equal((await post("/api/word-wise",{text:"x".repeat(6001)})).status,400);
   const doc = { title: "Fixture", paras: [{ n: 1, text: "This text explains a test." }] };
   const response = await post("/api/ask", { doc, thread: { action: "ask", question: "Explain this." }, search: false });
   assert.equal(response.status, 200);

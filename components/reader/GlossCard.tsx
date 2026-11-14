@@ -10,6 +10,7 @@ import { useStore, type Gloss, type Turn } from "@/lib/store";
 import { undash } from "@/lib/article";
 import { Answer, keyLine, Sources, unmark } from "./Answer";
 import { AnalysisContent, WordCard } from "./LearningContent";
+import { useLearning } from "@/lib/learning-store";
 import { learningSource } from "@/lib/learning-source";
 import { Writing } from "./Writing";
 import { fmtCost, fmtTokens, useReader } from "./context";
@@ -19,7 +20,7 @@ type Props = {
   active: boolean;
   hover: boolean;
   entering: boolean;
-  /** In a crowded stretch of margin, a closed note is just its question. */
+  /** In a crowded stretch of margin, secondary notes show just their question; learning notes retain their summary. */
   mini?: boolean;
   /** "margin" cards are absolutely placed; "sheet" and "list" flow normally. */
   variant: "margin" | "sheet" | "list";
@@ -111,14 +112,17 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
   const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const definitionDisplay = useLearning(s => s.preferences.display);
   const first = gloss.turns[0];
+  const meaning = first.definition;
+  const definitionLines = meaning ? [...new Set((definitionDisplay === "english" ? [meaning.english] : definitionDisplay === "native" ? [meaning.native || meaning.english] : [meaning.native, meaning.english]).filter(Boolean))] : [];
   const last = gloss.turns[gloss.turns.length - 1];
   const busy = gloss.turns.some((t) => t.streaming);
   const collapsed = variant === "margin" && !active;
   const blockId = gloss.anchor?.start.b ?? gloss.at;
   const n = blockId ? ix.numbers.get(blockId) : undefined;
   const nEnd = gloss.anchor ? ix.numbers.get(gloss.anchor.end.b) : undefined;
-  const label = gloss.anchor ? ACTIONS[gloss.action].label : "Whole text";
+  const label = gloss.imageBlock ? "图片讲解" : gloss.anchor ? ACTIONS[gloss.action].label : "Whole text";
 
   useEffect(() => {
     if (entering) {
@@ -174,7 +178,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
       >
         <div className="flex items-baseline gap-2">
           <p className="min-w-0 flex-1 truncate text-[13.5px] font-medium leading-[1.4] text-ink">
-            {gloss.question ?? (
+            {gloss.action === "define" ? <span className="text-[12px] font-normal text-ink-3">{meaning?.word || gloss.anchor?.quote || label}</span> : gloss.question ?? (
               <>
                 <span className="text-rubric-text">{label}</span>
                 {gloss.anchor && <span className="font-normal text-ink-2">{` \u201c${gloss.anchor.quote}\u201d`}</span>}
@@ -188,7 +192,11 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
           )}
           {where && <span className="shrink-0 text-[11px] tabular-nums text-ink-4">{where}</span>}
         </div>
-        {!mini && <Gist t={first} />}
+        {gloss.action === "define" ? (
+          definitionLines.length ? <div className="dictionary-preview mt-1">
+            {definitionLines.map((line, i) => <p key={i} className={`line-clamp-3 text-[13.5px] leading-[1.5] ${i ? 'mt-1 text-ink-3' : 'text-ink'}`}>{line}</p>)}
+          </div> : <Gist t={first} />
+        ) : (!mini || gloss.action === "explain" || gloss.action === "simplify") && <Gist t={first} prominent={gloss.action === "explain" || gloss.action === "simplify"} />}
       </article>
     );
   }
@@ -200,7 +208,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
       data-action={gloss.action}
       aria-label={`${label} note${n ? ` on paragraph ${n}` : ""}`}
       className={[
-        variant === "margin" ? "gloss" : "gloss !relative !transform-none",
+        variant === "margin" ? "gloss gloss-margin" : "gloss !relative !transform-none",
         active ? "is-active" : "",
         hover ? "is-hover" : "",
         entering ? "is-entering" : "",
@@ -340,11 +348,11 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
 });
 
 /** The closed note's second line: the key answer, or the pen still writing. */
-function Gist({ t }: { t: Turn }) {
-  if (t.error && !t.content) return <p className="mt-1 line-clamp-1 text-[13px] leading-[1.45] text-rubric-text">{t.error}</p>;
-  if (t.streaming && !t.content) return <span className="writing-line mt-2 block" aria-label="Writing" role="status" />;
-  const line = keyLine(t.content);
-  return line ? <p className="mt-1 line-clamp-2 text-[13px] leading-[1.45] text-ink-3">{line}</p> : null;
+function Gist({ t, prominent = false }: { t: Turn; prominent?: boolean }) {
+  if (t.error && !t.content && !t.analysis) return <p className="mt-1 line-clamp-1 text-[13px] leading-[1.45] text-rubric-text">{t.error}</p>;
+  if (t.streaming && !t.content && !t.analysis) return <span className="writing-line mt-2 block" aria-label="Writing" role="status" />;
+  const line = t.analysis?.simplified?.trim() || t.analysis?.translation?.trim() || t.analysis?.backbone?.trim() || keyLine(t.content);
+  return line ? <p className={`note-summary mt-1 ${prominent ? "line-clamp-3 text-[13.5px] leading-[1.5] text-ink" : "line-clamp-2 text-[13px] leading-[1.45] text-ink-3"}`}>{line}</p> : null;
 }
 
 function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {

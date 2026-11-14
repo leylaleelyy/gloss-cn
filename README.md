@@ -90,3 +90,30 @@ a background worker with vocabulary highlighting.
 Validation: `npm run test:word-wise` and `npm run test:learning`. With a local server
 running, set `GLOSS_TEST_URL` and run `npm run test:word-wise-reader` and
 `npm run test:ipad` for isolated Chromium touch-layout checks with mocked AI replies.
+
+### Reader improvements recovered into main
+
+- Collapsed dictionary cards retain definitions in the selected language; Explain and
+  Analyze cards retain their key summary even in crowded margins. Expanded margin
+  cards use one scroll area with a sticky header.
+- Searchable chapter navigation uses EPUB navigation titles or document headings.
+  Long-distance jumps settle immediately, and the left navigation can be collapsed.
+- Typeface, size, spacing, width, alignment and paragraph style are saved per book,
+  including restoration before the first paint.
+- Touch selection survives native handle handoff; popovers restore focus on Escape
+  while retaining the iPad viewport positioning and keyboard fixes.
+- Reading progress and annotations flush on backgrounding or exit. Long books use
+  cached paragraph lookup, sampled navigation bars and batched resize work.
+- Figures support contextual image explanations and follow-up cards through the
+  configured vision provider. EPUB/text parsing runs in a worker; PDF batches yield
+  to keep the interface responsive. Unsorted books retry automatic classification
+  when connectivity or provider settings change.
+
+The archived Kindle work was audited file by file. Kindle display detection, e-ink
+styles and controls, the Kindle route, legacy CSS dependencies/build scripts,
+Kindle deployment configuration and device-specific tests are intentionally excluded.
+The archived mobile fixed-position popover CSS was superseded by the iPad viewport
+positioning fix; reading width remains independent of font size.
+
+Additional regression checks: `npm run test:reader-reliability`, `npm run test:epub`,
+`npm run test:ai-provider`, and the full `npm run test:word-wise-reader` browser suite.

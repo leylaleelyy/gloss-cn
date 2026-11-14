@@ -88,12 +88,58 @@ export const LENGTH_WORDS: Record<Settings["length"], number> = { short: 50, nor
 
 export const SETTINGS_KEY = "gloss:settings";
 
+export const BOOK_FACE_PREFIX = "gloss:book-face:";
+export function bookFace(id: string | null): Settings["face"] | null {
+  if (!id || typeof window === "undefined") return null;
+  try {
+    const face = localStorage.getItem(BOOK_FACE_PREFIX + id);
+    return FACES.some(f => f.key === face) ? face as Settings["face"] : null;
+  } catch { return null; }
+}
+export function readingBook(path: string): string | null {
+  const match = /^\/read\/([^/]+)\/?$/.exec(path);
+  try { return match ? decodeURIComponent(match[1]) : null; } catch { return null; }
+}
+export const BOOK_SETTINGS_PREFIX = "gloss:book-settings:";
+export const BOOK_KEYS = ["face", "size", "leading", "width", "align", "paras"] as const;
+export type BookSettings = Pick<Settings, typeof BOOK_KEYS[number]>;
+export function cleanBookSettings(value: unknown): Partial<BookSettings> {
+  if (!value || typeof value !== "object") return {};
+  const v = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  const choices: Record<string, readonly string[]> = {
+    face: ["serif", "book", "sans", "legible", "dyslexie", "huiwen", "arphic"],
+    leading: ["tight", "normal", "loose"], width: ["narrow", "normal", "wide"],
+    align: ["left", "justify"], paras: ["spaced", "indented"],
+  };
+  for (const [key, values] of Object.entries(choices)) {
+    if (typeof v[key] === "string" && values.includes(v[key] as string)) result[key] = v[key];
+  }
+  if (typeof v.size === "number" && Number.isFinite(v.size) && v.size >= 15 && v.size <= 28) result.size = v.size;
+  return result as Partial<BookSettings>;
+}
+export function bookSettings(id: string | null): Partial<BookSettings> {
+  if (!id || typeof window === "undefined") return {};
+  const face = bookFace(id);
+  let saved = {};
+  try { saved = cleanBookSettings(JSON.parse(localStorage.getItem(BOOK_SETTINGS_PREFIX + id) || "{}")); } catch {}
+  return { ...(face ? { face } : {}), ...saved };
+}
+export function bookSettingsSnapshot(id: string | null): string {
+  return JSON.stringify(bookSettings(id));
+}
+export function saveBookSettings(id: string, patch: Partial<BookSettings>) {
+  localStorage.setItem(BOOK_SETTINGS_PREFIX + id, JSON.stringify({ ...bookSettings(id), ...cleanBookSettings(patch) }));
+  window.dispatchEvent(new Event("gloss:book-settings"));
+}
+
 export function resolveTheme(theme: Settings["theme"]): Exclude<Settings["theme"], "auto"> {
   if (theme !== "auto") return theme;
   return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "paper";
 }
 
 export function applySettings(s: Settings) {
+  s = { ...s, ...bookSettings(readingBook(window.location.pathname)) };
   const el = document.documentElement;
   el.dataset.theme = resolveTheme(s.theme);
   el.dataset.pen = s.pen;
@@ -109,4 +155,4 @@ export function applySettings(s: Settings) {
  * The same thing as applySettings, as an inline script for <head>, so the
  * first paint already has the reader's theme, pen and type. Kept in sync by hand.
  */
-export const BOOT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${SETTINGS_KEY}")||"{}"),e=document.documentElement,t=s.theme||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"night":"paper";e.dataset.webkit=window.nsh?"true":"false";e.dataset.theme=t;e.dataset.pen=s.pen||"vermilion";e.dataset.face=s.face||"serif";e.dataset.align=s.align||"left";e.dataset.paras=s.paras||"spaced";if(s.size)e.style.setProperty("--read-size",s.size+"px");var L={tight:1.5,normal:1.64,loose:1.82},M={narrow:28,normal:32,wide:37};if(s.leading)e.style.setProperty("--leading",L[s.leading]);if(s.width)e.style.setProperty("--measure-k",M[s.width])}catch(x){}`;
+export const BOOT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${SETTINGS_KEY}")||"{}"),e=document.documentElement,t=s.theme||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"night":"paper";e.dataset.webkit=window.nsh?"true":"false";e.dataset.theme=t;e.dataset.pen=s.pen||"vermilion";var m=/^\\/read\\/([^/]+)\\/?$/.exec(location.pathname),f=m?localStorage.getItem("${BOOK_FACE_PREFIX}"+decodeURIComponent(m[1])):null;if(${JSON.stringify(FACES.map(f => f.key))}.includes(f))s.face=f;try{if(m)Object.assign(s,(${cleanBookSettings.toString()})(JSON.parse(localStorage.getItem("${BOOK_SETTINGS_PREFIX}"+decodeURIComponent(m[1]))||"{}")))}catch(_){}e.dataset.face=s.face||"serif";e.dataset.align=s.align||"left";e.dataset.paras=s.paras||"spaced";if(s.size)e.style.setProperty("--read-size",s.size+"px");var L={tight:1.5,normal:1.64,loose:1.82},M={narrow:28,normal:32,wide:37};if(s.leading)e.style.setProperty("--leading",L[s.leading]);if(s.width)e.style.setProperty("--measure-k",M[s.width])}catch(x){}`;

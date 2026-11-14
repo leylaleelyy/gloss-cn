@@ -27,6 +27,7 @@ export function Popover({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -65,9 +66,10 @@ export function Popover({
   useEffect(() => {
     if (!openOn) return;
     // On the next frame, so the click that sent the event does not count as an outside click.
-    const show = () => requestAnimationFrame(() => setOpen(true));
+    let frame = 0;
+    const show = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => setOpen(true)); };
     window.addEventListener(openOn, show);
-    return () => window.removeEventListener(openOn, show);
+    return () => { window.removeEventListener(openOn, show); cancelAnimationFrame(frame); };
   }, [openOn]);
 
   useEffect(() => {
@@ -79,8 +81,9 @@ export function Popover({
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
       }
     };
     document.addEventListener("pointerdown", onDown);
@@ -94,6 +97,7 @@ export function Popover({
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
         data-tip={open ? undefined : tip ?? label}
@@ -112,7 +116,10 @@ export function Popover({
           className={`pop absolute top-[calc(100%+8px)] z-[60] overflow-y-auto overscroll-contain p-4 ${align === "right" ? "right-0" : "left-0"}`}
           style={{ width, ["--origin" as string]: align === "right" ? "top right" : "top left" }}
         >
-          {children(() => setOpen(false))}
+          {children(() => {
+            if (ref.current?.contains(document.activeElement)) triggerRef.current?.focus({ preventScroll: true });
+            setOpen(false);
+          })}
         </div>
       )}
     </div>

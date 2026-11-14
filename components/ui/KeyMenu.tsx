@@ -24,7 +24,7 @@ export function KeyMenu() {
   }, []);
   return (
     <Popover label="AI settings" tip="Configure your AI provider" width={360} triggerClass={barBtn} openOn="gloss:key"
-      trigger={<><KeyRound size={15} aria-hidden /><span className="hidden sm:inline">AI settings</span></>}>
+      trigger={<><KeyRound size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">AI settings</span></>}>
       {(close) => <ProviderPanel current={config} appModel={appModel} onSave={setConfig} close={close} />}
     </Popover>
   );

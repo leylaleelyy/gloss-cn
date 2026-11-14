@@ -38,6 +38,7 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
   const articleId = ix.article.id;
   const g = (st.glosses[articleId] ?? []).find((x) => x.id === glossId);
   if (!g) return;
+  if (g.imageBlock) { await explainImage(ix, g); return; }
 
   if ((g.action === "simplify" || g.action === "define") && g.anchor && g.turns.length === 1) {
     await learnSelection(ix, g); return;
@@ -177,9 +178,13 @@ export function openRelatedGloss(ix: DocIndex, gloss: Gloss, action: "explain" |
 
 export function startGloss(
   ix: DocIndex,
-  opts: { anchor?: Anchor; at?: string; action: Action; question?: string; modelKey?: ModelKey }
+  opts: { anchor?: Anchor; at?: string; imageBlock?: string; action: Action; question?: string; modelKey?: ModelKey }
 ): string {
   const st = useStore.getState();
+  if (opts.imageBlock) {
+    const existing = st.glosses[ix.article.id]?.find(g => g.imageBlock === opts.imageBlock);
+    if (existing) { st.setUI({ activeGloss: existing.id, focusMode: false }); return existing.id; }
+  }
   const modelKey = modelOf(opts.modelKey ?? st.settings.model);
   // The answer is written in the margin, which focus mode hides: step out of it.
   if (st.focusMode) st.setUI({ focusMode: false });
@@ -188,6 +193,7 @@ export function startGloss(
     articleId: ix.article.id,
     anchor: opts.anchor,
     at: opts.at,
+    imageBlock: opts.imageBlock,
     action: opts.action,
     question: opts.question,
     createdAt: Date.now(),
@@ -317,4 +323,31 @@ export async function streamAsk(
   } catch (e) {
     if (!signal?.aborted) on.error?.(`Connection lost: ${String(e)}`);
   }
+}
+
+/** Visual answers use the same persistent card, stop, retry and follow-up controls. */
+async function explainImage(ix: DocIndex, gloss: Gloss) {
+  const controller = new AbortController();
+  controllers.get(gloss.id)?.abort();
+  controllers.set(gloss.id, controller);
+  const update = (patch: Partial<Turn>) => useStore.getState().updateGloss(ix.article.id, gloss.id,
+    g => lastAssistant(g, turn => ({ ...turn, ...patch })));
+  try {
+    const index = ix.article.blocks.findIndex(b => b.id === gloss.imageBlock);
+    const block = ix.article.blocks[index];
+    if (!block?.src) throw new Error("图片已不可用，请重新打开文章。");
+    const context = ix.article.blocks.slice(Math.max(0,index-2),index+3).map(b => b.runs.map(r=>r.text).join("")).join("\n").slice(0,5000);
+    const response = await fetch("/api/image-explain", {
+      method:"POST", signal:controller.signal,
+      headers:{"Content-Type":"application/json",...providerHeaders()},
+      body:JSON.stringify({image:block.src, caption:block.alt, context, title:ix.article.title,
+        language:useStore.getState().settings.responseLanguage,
+        question:gloss.question, history:gloss.turns.filter(t=>!t.streaming && !t.error).slice(-8).map(t=>({role:t.role,content:t.content}))})
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "图片分析失败，请检查视觉模型设置。");
+    if (controllers.get(gloss.id) === controller) update({content:result.content,model:result.model,streaming:false,error:undefined});
+  } catch (error) {
+    if (controllers.get(gloss.id) === controller) update({streaming:false,error:controller.signal.aborted ? "已停止图片分析。" : error instanceof Error ? error.message : "图片分析失败。"});
+  } finally { if (controllers.get(gloss.id) === controller) controllers.delete(gloss.id); }
 }

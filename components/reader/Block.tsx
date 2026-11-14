@@ -3,7 +3,9 @@
 import { Fragment, memo, useState, type ReactNode } from "react";
 import { useWiseHints } from "./WordWise";
 import type { WiseHint } from "@/lib/word-wise";
-import { MessageCirclePlus } from "lucide-react";
+import { startGloss } from "@/lib/ask";
+import { useReader } from "./context";
+import { MessageCirclePlus, ScanEye } from "lucide-react";
 import type { Block as BlockT, Run } from "@/lib/article";
 
 /** `note`: a highlight with the reader's note, set only in the block where it ends. */
@@ -136,10 +138,12 @@ function repairSrc(src: string): string {
   }
 }
 
-function Picture({ src, alt }: { src: string; alt?: string }) {
+function Picture({ src, alt, blockId }: { src: string; alt?: string; blockId: string }) {
+  const { ix } = useReader();
   const [state, setState] = useState<"loading" | "ok" | "gone">("loading");
   if (state === "gone") return null;
   return (
+    <div>
     <img
       src={repairSrc(src)}
       alt={alt ?? ""}
@@ -151,6 +155,11 @@ function Picture({ src, alt }: { src: string; alt?: string }) {
       onLoad={(e) => (e.currentTarget.naturalWidth < 48 ? setState("gone") : setState("ok"))}
       onError={() => setState("gone")}
     />
+    {state === "ok" && <button type="button" className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-rule px-3 text-sm text-ink-2 hover:bg-sunk"
+      onClick={() => startGloss(ix, { at:blockId, imageBlock:blockId, action:"ask", question:"请分析并讲解这张图片，结合上下文说明重点。" })}>
+      <ScanEye size={17} /> 分析图片
+    </button>}
+    </div>
   );
 }
 
@@ -211,7 +220,7 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
           {n}
         </button>
       )}
-      {block.type === "figure" && block.src && <Picture src={block.src} alt={block.alt} />}
+      {block.type === "figure" && block.src && <Picture src={block.src} alt={block.alt} blockId={block.id} />}
       {block.type === "table" && block.rows ? (
         <Table rows={block.rows} head={block.head} />
       ) : block.type === "figure" ? (

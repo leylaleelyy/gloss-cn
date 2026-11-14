@@ -241,7 +241,7 @@ export function ListenButton({ from }: { from: () => string | null }) {
         startListening(ix, r && r.bottom > 0 && r.top < window.innerHeight ? cursor : from());
       }}
     >
-      <Headphones size={16} strokeWidth={1.8} />
+      <Headphones size={18} strokeWidth={1.8} /><span className="toolbar-label">Listen</span>
     </button>
   );
 }

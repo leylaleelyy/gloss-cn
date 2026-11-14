@@ -62,6 +62,7 @@ export async function epubToArticle(file: File, onProgress?: (fraction: number, 
   const cover = Array.from(manifest.values()).find((node) => (node.getAttribute("properties") || "").split(/\s+/).includes("cover-image")) ?? manifest.get(coverId || "");
   const image = cover ? pictures.get(pathOf(cover.getAttribute("href") || "", packagePath)) : undefined;
   const blocks: Block[] = [];
+  const chapterStarts = new Map<string, string>();
   for (let index = 0; index < spine.length; index++) {
     let item = manifest.get(spine[index].getAttribute("idref"));
     const visited = new Set<string>();
@@ -88,6 +89,7 @@ export async function epubToArticle(file: File, onProgress?: (fraction: number, 
       } catch { img.remove(); }
     }
     const chapter = htmlToBlocks(document.body);
+    if (chapter.length) chapterStarts.set(path, `b${blocks.length + 1}`);
     for (const block of chapter) {
       if (block.src) {
         const picture = embedded.get(block.src);
@@ -100,6 +102,20 @@ export async function epubToArticle(file: File, onProgress?: (fraction: number, 
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   if (!blocks.length) throw new Error("This EPUB contains no readable content.");
+  const toc: NonNullable<Article["toc"]> = [];
+  const navItem = Array.from(manifest.values()).find(node => (node.getAttribute("properties") || "").split(/\s+/).includes("nav"));
+  if (navItem) {
+    try {
+      const navPath = pathOf(navItem.getAttribute("href") || "", packagePath);
+      const navDoc = parseHTML(read(navPath)).document;
+      const nav = Array.from(navDoc.querySelectorAll("nav")).find(node => (node.getAttribute("epub:type") || node.getAttribute("role") || "").includes("toc")) ?? navDoc.querySelector("nav");
+      for (const link of nav?.querySelectorAll("a[href]") ?? []) {
+        const id = chapterStarts.get(pathOf(link.getAttribute("href") || "", navPath));
+        const title = link.textContent?.trim();
+        if (id && title && !toc.some(entry => entry.id === id)) toc.push({ id, title, level: 1 });
+      }
+    } catch { /* Broken navigation must not prevent reading a valid spine. */ }
+  }
   const title = metadata("title") || file.name.replace(/\.epub$/i, "");
-  return { id: `${slugify(title)}-${crypto.randomUUID().slice(0, 8)}`, title, author: metadata("creator") || undefined, published: metadata("date") || undefined, source: file.name, origin: "file", addedAt: Date.now(), blocks, ...(image ? { image } : {}) };
+  return { id: `${slugify(title)}-${crypto.randomUUID().slice(0, 8)}`, title, author: metadata("creator") || undefined, published: metadata("date") || undefined, source: file.name, origin: "file", addedAt: Date.now(), blocks, ...(toc.length ? { toc } : {}), ...(image ? { image } : {}) };
 }

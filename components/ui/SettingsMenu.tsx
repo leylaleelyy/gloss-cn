@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { flushSync } from "react-dom";
 import { AlignJustify, AlignLeft, Focus, Headphones, Map as MapIcon, Minus, Paintbrush, Pilcrow, Plus, RotateCcw } from "lucide-react";
 import { LearningPreferences } from "@/components/reader/LearningPreferences";
 import { RESPONSE_LANGUAGES, responseLanguage } from "@/lib/response-language";
 import { MODELS, type ModelKey } from "@/lib/models";
-import { applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
+import { BOOK_KEYS, bookSettingsSnapshot, readingBook, saveBookSettings, applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
 import { Popover, barBtn } from "./Popover";
 import { setLibraryPrefs, useLibraryPrefs } from "@/lib/library-prefs";
@@ -117,6 +118,12 @@ function PaintedCovers() {
   );
 }
 
+const subscribeBookFace = (fn: () => void) => {
+  window.addEventListener("gloss:book-settings", fn);
+  window.addEventListener("storage", fn);
+  return () => { window.removeEventListener("gloss:book-settings", fn); window.removeEventListener("storage", fn); };
+};
+
 let swap: { finished: Promise<void> } | null = null;
 
 /**
@@ -124,14 +131,24 @@ let swap: { finished: Promise<void> } | null = null;
  * page underneath immediately, so the page itself is the preview.
  */
 export function SettingsMenu({ compact = false }: { compact?: boolean }) {
-  const settings = useStore((s) => s.settings);
+  const globalSettings = useStore((s) => s.settings);
+  const bookId = readingBook(usePathname());
+  const saved = useSyncExternalStore(subscribeBookFace, () => bookSettingsSnapshot(bookId), () => "{}");
+  const settings: Settings = { ...globalSettings, ...JSON.parse(saved) };
+  const [fontError, setFontError] = useState("");
   const setSettings = useStore((s) => s.setSettings);
   const focusMode = useStore((s) => s.focusMode);
   const setUI = useStore((s) => s.setUI);
   const [tab, setTab] = useState<"look" | "text" | "answers">("look");
 
   const set = (patch: Partial<Settings>) => {
-    setSettings(patch);
+    if (bookId) {
+      const local = Object.fromEntries(Object.entries(patch).filter(([key]) => BOOK_KEYS.includes(key as typeof BOOK_KEYS[number])));
+      const rest = Object.fromEntries(Object.entries(patch).filter(([key]) => !BOOK_KEYS.includes(key as typeof BOOK_KEYS[number])));
+      try { if (Object.keys(local).length) saveBookSettings(bookId, local); setFontError(""); }
+      catch { setFontError("无法保存本书阅读设置，请检查存储空间。"); return; }
+      if (Object.keys(rest).length) setSettings(rest);
+    } else setSettings(patch);
     applySettings({ ...useStore.getState().settings });
   };
   const size = (v: number) => set({ size: Math.max(15, Math.min(28, v)) });
@@ -184,7 +201,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <Popover label="Appearance and answers" tip="Appearance" width={compact ? 316 : 348} triggerClass={barBtn} trigger={<span className="block translate-y-[0.5px] font-serif text-[18px] leading-none">Aa</span>}>
+    <Popover label="Appearance and answers" tip="Appearance" width={compact ? 316 : 348} triggerClass={barBtn} trigger={<><Paintbrush size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Appearance</span></>}>
       {() => (
         <div>
           {!compact && (
@@ -277,7 +294,8 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && tab === "text" && (
             <div className="space-y-3.5">
               <div>
-                <p className="mb-2.5 text-[12.5px] text-ink-3">Typeface</p>
+                <p className="mb-2.5 text-[12.5px] text-ink-3">Typeface{bookId ? " · 本书独立记忆" : " · 默认字体"}</p>
+                {fontError && <p role="alert" className="text-[12px] text-ink-2">{fontError}</p>}
                 <div className="grid grid-cols-3 gap-2">
                   {FACES.map((f) => (
                     <button
@@ -298,7 +316,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                 </div>
               </div>
               <Row label="Size">
-                <div className="flex items-center gap-1.5">
+                <div className="text-size-controls flex items-center gap-1.5">
                   <button type="button" aria-label="Smaller text" data-tip="Smaller" onClick={() => size(settings.size - 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
                     <Minus size={14} />
                   </button>
@@ -314,7 +332,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   <button type="button" aria-label="Larger text" data-tip="Larger" onClick={() => size(settings.size + 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
                     <Plus size={14} />
                   </button>
-                  <span className="w-6 text-right text-[12px] tabular-nums text-ink-3">{settings.size}</span>
+                  <output className="w-12 shrink-0 text-right text-[12px] tabular-nums text-ink-3" aria-label="Current text size">{settings.size} px</output>
                 </div>
               </Row>
               <Row label="Spacing">

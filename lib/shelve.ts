@@ -39,7 +39,8 @@ export async function classify(
     model: DEFAULT_MODEL,
     apiKey: opts.apiKey,
     signal: opts.signal,
-    maxTokens: 220,
+    maxTokens: 1200,
+    thinking: false,
     messages: [
       { role: "system", content: SYSTEM },
       { role: "user", content: lines.join("\n") },
@@ -47,6 +48,7 @@ export async function classify(
   });
   if (!r.ok) return r;
   const topic = topicOf(r.data.topic);
+  if (topic === "unsorted") return { ok: false, error: "The model did not return a valid topic. Try again." };
   const scene = typeof r.data.scene === "string" ? r.data.scene.replace(/\s+/g, " ").trim().slice(0, 300) : undefined;
   return { ok: true, shelving: { topic, tags: cleanTags(r.data.tags, topic), scene: scene || undefined }, usd: r.usage.costUsd ?? 0 };
 }

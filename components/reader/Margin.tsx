@@ -1,6 +1,5 @@
 "use client";
 
-import { flushSync } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { anchorToRange, blockEl } from "@/lib/anchor";
 import { MARKERS } from "@/lib/settings";
@@ -117,7 +116,7 @@ export function Margin({
   }, [compute, size, layout.mini]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => flushSync(compute));
+    const ro = new ResizeObserver(schedule);
     if (articleEl) {
       ro.observe(articleEl);
       if (articleEl.parentElement) ro.observe(articleEl.parentElement);

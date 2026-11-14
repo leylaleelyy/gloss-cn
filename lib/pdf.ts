@@ -73,6 +73,8 @@ export async function pdfToArticle(file: File, onProgress?: PdfProgress): Promis
     for (let b = await session.nextBatch(); b; b = await session.nextBatch()) {
       for (const pg of b.result.pages) byPage.set(pg.pageNum, pg.blocks ?? []);
       onProgress?.(b.endPage / pages, `Reading ${label}`);
+      // Yield between WASM batches so input and progress can paint.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   } catch (e) {
     parser.free();

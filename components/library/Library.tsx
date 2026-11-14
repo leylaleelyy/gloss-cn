@@ -125,7 +125,11 @@ export function Library() {
 
   // Texts shelved before the library existed are sorted onto topics the first time it opens.
   useEffect(() => {
-    if (hydrated) void backfill(useStore.getState().library);
+    if (!hydrated) return;
+    const retry = () => { void backfill(useStore.getState().library); };
+    retry();
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
   }, [hydrated, library.length]);
 
   // Painted covers, when they're turned on: one at a time, for every sorted text without one.

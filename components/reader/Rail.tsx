@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGlosses, useHighlights, useStore } from "@/lib/store";
 import { useReader } from "./context";
+import { readingScrollBehavior } from "@/lib/reading-motion";
 
 type Geo = { docTop: number; docH: number; blocks: { id: string; top: number; h: number; heading: boolean; fill: number }[] };
 
@@ -28,7 +29,10 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
     if (!articleEl || !railRef.current) return;
     const r = articleEl.getBoundingClientRect();
     const docTop = r.top + window.scrollY;
-    const blocks = Array.from(articleEl.querySelectorAll<HTMLElement>("[data-block]")).map((el) => {
+    const all = Array.from(articleEl.querySelectorAll<HTMLElement>("[data-block]"));
+    // More bars than screen pixels add DOM/layout work without adding detail.
+    const stride = Math.max(1, Math.ceil(all.length / 300));
+    const blocks = all.filter((_, index) => index % stride === 0 || index === all.length - 1).map((el) => {
       const br = el.getBoundingClientRect();
       const len = (el.textContent ?? "").length;
       return {
@@ -44,15 +48,17 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
   }, [articleEl]);
 
   useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(() => requestAnimationFrame(measure));
+    let frame = 0, disposed = false;
+    const schedule = () => { if (!disposed && !frame) frame = requestAnimationFrame(() => { frame = 0; measure(); }); };
+    schedule();
+    const ro = new ResizeObserver(schedule);
     if (articleEl) {
       ro.observe(articleEl);
       if (articleEl.parentElement) ro.observe(articleEl.parentElement);
     }
     if (railRef.current) ro.observe(railRef.current);
-    document.fonts?.ready.then(measure).catch(() => {});
-    return () => ro.disconnect();
+    document.fonts?.ready.then(schedule).catch(() => {});
+    return () => { disposed = true; ro.disconnect(); cancelAnimationFrame(frame); };
   }, [measure, articleEl, size]);
 
   useEffect(() => {
@@ -84,14 +90,16 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
   const k = railH / geo.docH;
   const posOf = (blockId: string) => {
     const b = geo.blocks.find((x) => x.id === blockId);
-    return b ? b.top * k : null;
+    if (b) return b.top * k;
+    const el = articleEl?.querySelector<HTMLElement>(`[data-block="${CSS.escape(blockId)}"]`);
+    return el ? (el.getBoundingClientRect().top + window.scrollY - geo.docTop) * k : null;
   };
 
   const travel = (clientY: number) => {
     const rr = railRef.current?.getBoundingClientRect();
     if (!rr) return;
     const y = Math.max(0, Math.min(railH, clientY - rr.top));
-    window.scrollTo({ top: geo.docTop + y / k - window.innerHeight * 0.3, behavior: drag.current ? "instant" : "smooth" });
+    window.scrollTo({ top: geo.docTop + y / k - window.innerHeight * 0.3, behavior: drag.current ? "instant" : readingScrollBehavior() });
   };
 
   const sections = brief?.status === "ready" ? brief.data.sections : [];

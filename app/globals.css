@@ -349,7 +349,7 @@ kbd,
 /* ---------- the reading face ---------- */
 
 .prose-read {
-  animation: fade 0.7s 0.22s var(--ease-out) both;
+  /* Reading text is visible immediately; no delayed opacity flash on entry. */
   font-family: var(--font-serif);
   font-size: var(--read-size);
   line-height: var(--leading);
@@ -2125,6 +2125,49 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
 [data-face="arphic"] .prose-read .blk[data-type="h2"],
 [data-face="arphic"] .prose-read .blk[data-type="h3"] { font-family: inherit; }
 
+/* Tablet landscape keeps a navigation rail without squeezing text for margin cards. */
+@media (min-width: 900px) and (max-width: 1259px) and (orientation: landscape) {
+  .reader-grid { grid-template-columns: 28px 40px minmax(0, var(--m)); }
+  .reader-grid > .rg-rail { display: block; }
+  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: none; }
+}
+@media (pointer: coarse) and (min-width: 900px) and (max-width: 1439px) and (orientation: landscape) {
+  .reader-grid { grid-template-columns: 28px 40px minmax(0, var(--m)); }
+  .reader-grid > .rg-rail { display: block; }
+  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: none; }
+}
+@media (pointer: coarse) {
+  .reader-tools button, .reader-tools > a { min-height: 44px; min-width: 44px; }
+  .reader-tools a span { display: none; }
+  .text-size-controls button { min-height: 44px; min-width: 44px; }
+  .text-size-controls input { height: 32px; }
+  .pop[role="dialog"] { max-height: calc(100dvh - 88px); overflow-y: auto; overscroll-behavior: contain; }
+}
+
+/* Keep native selection handles while preferring Gloss actions over long-press callouts. */
+@media (any-pointer: coarse) {
+  .prose-read .blk-text { -webkit-touch-callout: none; -webkit-user-select: text; user-select: text; }
+  .prose-read .blk-text a { -webkit-touch-callout: default; }
+  .selection-actions { flex-wrap: wrap; justify-content: center; max-width: min(560px, calc(100vw - 24px)); }
+  .selection-actions .lens-btn { min-height: 44px; }
+  .lens-caret { animation: none; }
+}
+
+/* Cards take priority when tablet width cannot fit both sidebars. */
+@media (min-width: 960px) {
+  .reader-grid { grid-template-columns: 24px minmax(0, var(--m)) 24px 280px; }
+  .reader-grid > .rg-rail { display: none; }
+  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: block; }
+}
+@media (min-width: 1260px) {
+  .reader-grid:not([data-left-collapsed="true"]) { grid-template-columns: 28px 40px minmax(0, var(--m)) 32px 300px; }
+  .reader-grid:not([data-left-collapsed="true"]) > .rg-rail { display: block; }
+}
+
+@media (min-width: 1260px) {
+  .reader-grid[data-left-collapsed="true"] { grid-template-columns: 24px minmax(0, var(--m)) 32px 300px; }
+}
+
 /* Paint-only word markers: async definitions never change text metrics. */
 .word-wise {
   cursor: pointer; text-decoration: underline dotted; text-decoration-color: var(--ink-3);
@@ -2146,7 +2189,16 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 .word-wise-short::after { content: attr(data-short); }
 .word-wise-short[data-fit="true"] { visibility: visible; }
-
+/* Keep the complete text painted; no offscreen placeholders to catch up during a fling. */
+.prose-read > .blk { contain: layout style; }
+@media (pointer: coarse) {
+  /* Avoid expensive paragraph-wide pretty line breaking during touch reflow. */
+  .prose-read .blk-text { text-wrap: wrap; }
+  button, a, [role="button"] { touch-action: manipulation; }
+  .reader-grid [class*="backdrop-blur"], header[class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none; backdrop-filter: none; background-color: var(--bg);
+  }
+}
 .word-wise-toggle[aria-pressed="true"] { color: var(--rubric); background: var(--bg-sunk); }
 
 /* A single toolbar grammar: labelled controls on wide screens, icons on compact screens. */
@@ -2165,3 +2217,15 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .reader-tools > .word-wise-controls { gap: 0; }
   .reader-tools .word-wise-level { min-width: 40px; }
 }
+
+/* One scroll surface includes the entire expanded card, including follow-ups and actions. */
+.gloss-margin.is-active {
+  max-height: min(70dvh, calc(100dvh - var(--topbar-h) - 32px));
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain;
+  scrollbar-gutter: stable; scroll-padding-block: 40px 16px;
+}
+.gloss-margin.is-active > header {
+  position: sticky; top: -10px; z-index: 3; height: auto; min-height: 30px;
+  margin-top: -10px; padding-block: 8px; background: var(--bg-raised);
+}
+.gloss-margin .study-content { max-height: none; overflow: visible; }

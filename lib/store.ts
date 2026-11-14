@@ -38,6 +38,8 @@ export type Gloss = {
   anchor?: Anchor;
   /** ...or asked about the whole text from a reading position (a block id). */
   at?: string;
+  /** Figure block retained for visual follow-up and retry without duplicating image bytes. */
+  imageBlock?: string;
   action: Action;
   question?: string;
   turns: Turn[];
@@ -375,27 +377,30 @@ export const useStore = create<State>((set, get) => ({
     }),
 }));
 
-/* Debounced persistence. Streaming updates land many times a second, so the
-   write waits for a pause rather than serializing on every token. */
+/* Debounce streaming writes, but flush before the browser suspends the page. */
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistenceDirty = false;
+export function flushStorePersistence() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = null;
+  if (!persistenceDirty || !useStore.getState().hydrated) return;
+  const { glosses, highlights, briefs, progress, library } = useStore.getState();
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ glosses, highlights, briefs, progress, library }));
+    persistenceDirty = false;
+  } catch { /* Keep dirty so a later save or page lifecycle event can retry. */ }
+}
 if (typeof window !== "undefined") {
-  let t: ReturnType<typeof setTimeout> | null = null;
   useStore.subscribe((st, prev) => {
     if (!st.hydrated) return;
-    if (
-      st.glosses === prev.glosses &&
-      st.highlights === prev.highlights &&
-      st.briefs === prev.briefs &&
-      st.progress === prev.progress &&
-      st.library === prev.library
-    )
-      return;
-    if (t) clearTimeout(t);
-    t = setTimeout(() => {
-      const { glosses, highlights, briefs, progress, library } = useStore.getState();
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ glosses, highlights, briefs, progress, library }));
-      } catch {}
-    }, 400);
+    if (st.glosses === prev.glosses && st.highlights === prev.highlights && st.briefs === prev.briefs && st.progress === prev.progress && st.library === prev.library) return;
+    persistenceDirty = true;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(flushStorePersistence, 400);
+  });
+  window.addEventListener('pagehide', flushStorePersistence);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushStorePersistence();
   });
 }
 

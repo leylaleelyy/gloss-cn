@@ -10,8 +10,9 @@ import { SAMPLE_QUESTIONS } from "@/lib/samples";
 import { fetchBrief } from "@/lib/ask";
 import { indexArticle } from "@/lib/doc";
 import { fetchText } from "@/lib/sync";
-import { loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
+import { flushStorePersistence, loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
 import { applySettings } from "@/lib/settings";
+import { readingScrollBehavior } from "@/lib/reading-motion";
 import { GlossWordmark } from "@/components/brand/Gloss";
 import { Block, type Mark } from "./Block";
 import { Brief } from "./Brief";
@@ -26,8 +27,9 @@ import { Margin } from "./Margin";
 import { Notebook } from "./Notebook";
 import { Peek, Shortcuts, Toast } from "./Overlays";
 import { Rail } from "./Rail";
-import { WordWise } from "./WordWise";
+import { Contents } from "./Contents";
 import { TopBar } from "./TopBar";
+import { WordWise } from "./WordWise";
 import { VocabularyHighlights } from "./VocabularyHighlights";
 
 export function Reader({ id, initial }: { id: string; initial: Article | null }) {
@@ -38,16 +40,21 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
   const renamed = useStore((s) => s.library.find((x) => x.id === id)?.title);
   const shown = useMemo(() => (article ? displayArticle(renamed && renamed !== article.title ? { ...article, title: renamed } : article) : null), [article, renamed]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     hydrate();
     applySettings(useStore.getState().settings);
+  }, [hydrate, id]);
+
+  useEffect(() => {
+    let cancelled = false;
     if (!initial) {
       // Not on this device: it may be in the reader's account, fetched now that it is opened.
       void loadDoc(id)
         .then((a) => a ?? fetchText(id))
-        .then((a) => (a ? setArticle(a) : setMissing(true)));
+        .then((a) => { if (!cancelled) { if (a) setArticle(a); else setMissing(true); } });
     }
-  }, [hydrate, id, initial]);
+    return () => { cancelled = true; };
+  }, [id, initial]);
 
   // The text was read again (more carefully, or a page in the background): show the new reading in
   // place. Scroll anchoring alone did not hold when a page above the reader was swapped, so the
@@ -101,11 +108,11 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
         </div>
       </main>
     );
-  return <ReaderInner article={shown} />;
+  return <ReaderInner key={id} article={shown} />;
 }
 
-const GUTTER_WIDE = 64;
-const GUTTER_MID = 52;
+const GUTTER_WIDE = 32;
+const GUTTER_MID = 24;
 
 function ReaderInner({ article }: { article: Article }) {
   const ix = useMemo(() => indexArticle(article), [article]);
@@ -136,7 +143,7 @@ function ReaderInner({ article }: { article: Article }) {
   const setUI = useStore((s) => s.setUI);
   const setProgress = useStore((s) => s.setProgress);
 
-  const wide = useMedia("(min-width: 1080px)", true);
+  const wide = useMedia("(min-width: 960px)", true);
   const withRail = useMedia("(min-width: 1260px)", true);
 
   // Reset per-article UI when the article changes.
@@ -150,7 +157,8 @@ function ReaderInner({ article }: { article: Article }) {
     const el = blockEl(blockId);
     if (!el) return;
     const top = el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.28;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    const far = Math.abs(top - window.scrollY) > window.innerHeight * 3;
+    window.scrollTo({ top: Math.max(0, top), behavior: far ? "instant" : readingScrollBehavior() });
     if (opts?.flash !== false) {
       el.classList.remove("is-flash");
       void el.offsetWidth;
@@ -220,16 +228,20 @@ function ReaderInner({ article }: { article: Article }) {
   /* ---------------- reading position ---------------- */
 
   const currentRef = useRef<string | null>(null);
-  // Whole-text answers sit beside the first paragraph that starts on screen, so they open in view.
+  // Cache the ordered elements once; a toolbar click must not measure a whole book.
+  const paragraphElements = useMemo(() => articleEl
+    ? Array.from(articleEl.querySelectorAll<HTMLElement>('[data-block]:not([data-type=h2]):not([data-type=h3])'))
+    : [], [articleEl, article.blocks]);
   const askAnchor = useCallback(() => {
-    if (articleEl) {
-      for (const el of Array.from(articleEl.querySelectorAll<HTMLElement>("[data-block]:not([data-type=h2]):not([data-type=h3])"))) {
-        const top = el.getBoundingClientRect().top;
-        if (top >= 72 && top < window.innerHeight * 0.7) return el.dataset.block ?? null;
-      }
+    let low = 0, high = paragraphElements.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (paragraphElements[mid].getBoundingClientRect().top < 72) low = mid + 1;
+      else high = mid;
     }
-    return currentRef.current;
-  }, [articleEl]);
+    const el = paragraphElements[low];
+    return el && el.getBoundingClientRect().top < window.innerHeight * .7 ? el.dataset.block ?? null : currentRef.current;
+  }, [paragraphElements]);
 
   useEffect(() => {
     if (!articleEl) return;
@@ -237,6 +249,12 @@ function ReaderInner({ article }: { article: Article }) {
     let saveT: ReturnType<typeof setTimeout> | null = null;
     const all = Array.from(articleEl.querySelectorAll<HTMLElement>("[data-block]"));
     let readCount = 0;
+    let pendingProgress: { block: string; pct: number; at: number } | null = null;
+    const save = () => {
+      if (saveT) clearTimeout(saveT);
+      saveT = null;
+      if (pendingProgress) { setProgress(articleId, pendingProgress); pendingProgress = null; }
+    };
     const measure = () => {
       raf = 0;
       const line = window.innerHeight * 0.32;
@@ -269,59 +287,68 @@ function ReaderInner({ article }: { article: Article }) {
         setCurrent(id);
         if (useStore.getState().focusMode && id) setUI({ cursor: id });
       }
-      if (saveT) clearTimeout(saveT);
-      saveT = setTimeout(() => {
-        const id2 = currentRef.current;
-        if (!id2) return;
+      if (id) {
         const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 40;
-        const pct = window.scrollY < 160 ? 0 : atEnd ? 1 : ((ix.order.get(id2) ?? 0) + 1) / article.blocks.length;
-        setProgress(articleId, { block: id2, pct, at: Date.now() });
-      }, 800);
+        const pct = window.scrollY < 160 ? 0 : atEnd ? 1 : ((ix.order.get(id) ?? 0) + 1) / article.blocks.length;
+        pendingProgress = { block: id, pct, at: Date.now() };
+        if (saveT) clearTimeout(saveT);
+        saveT = setTimeout(save, 800);
+      }
     };
     const on = () => {
       if (!raf) raf = requestAnimationFrame(measure);
     };
+    const flush = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      // Cleanup may run after navigation has detached the article: use the last measured position then.
+      if (articleEl.isConnected) measure();
+      save(); flushStorePersistence();
+    };
+    const onHidden = () => { if (document.visibilityState === 'hidden') flush(); };
     measure();
     window.addEventListener("scroll", on, { passive: true });
     window.addEventListener("resize", on);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHidden);
     return () => {
       window.removeEventListener("scroll", on);
       window.removeEventListener("resize", on);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHidden);
       if (raf) cancelAnimationFrame(raf);
-      if (saveT) clearTimeout(saveT);
+      save(); flushStorePersistence();
       for (const el of all) delete el.dataset.read;
     };
   }, [articleEl, articleId, setProgress, setUI, ix, article.blocks.length, focusMode]);
 
   // Pick up where you left off, once, after hydration.
   const resumed = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!hydrated || !articleEl || resumed.current) return;
     resumed.current = true;
     // Opened from a link to one highlight (the home page's daily one): go there, not to where you left off.
     const sourceBlock = new URLSearchParams(window.location.search).get("block");
     if (sourceBlock && ix.order.has(sourceBlock)) {
       const url = new URL(window.location.href); url.searchParams.delete("block"); window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-      requestAnimationFrame(() => jumpToBlock(sourceBlock, { flash: false })); return;
+      jumpToBlock(sourceBlock, { flash: false }); return;
     }
     const hlId = new URLSearchParams(window.location.search).get("hl");
     const hl = hlId ? (useStore.getState().highlights[articleId] ?? []).find((h) => h.id === hlId) : undefined;
     if (hlId) window.history.replaceState(null, "", window.location.pathname);
     if (hl) {
-      requestAnimationFrame(() => {
-        jumpToBlock(hl.anchor.start.b, { flash: false });
-        setUI({ activeHighlight: hl.id });
-      });
+      jumpToBlock(hl.anchor.start.b, { flash: false });
+      setUI({ activeHighlight: hl.id });
       return;
     }
     const p = useStore.getState().progress[articleId];
     const n = p ? ix.numbers.get(p.block) : undefined;
     if (p && n && n > 2 && p.pct < 0.98) {
-      requestAnimationFrame(() => {
+      {
         const el = blockEl(p.block);
         if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.28, behavior: "instant" });
         setToast({ kind: "resume", n });
-      });
+      }
     } else {
       try {
         // Wide screens already carry the hint in the empty margin.
@@ -445,7 +472,7 @@ function ReaderInner({ article }: { article: Article }) {
           const b = st.briefs[articleId];
           if (!b || b.status === "error") fetchBrief(ix);
           else setUI({ briefOpen: !st.briefOpen });
-          if (window.scrollY > 400) window.scrollTo({ top: 0, behavior: "smooth" });
+          if (window.scrollY > 400) window.scrollTo({ top: 0, behavior: readingScrollBehavior() });
           break;
         }
         case "n":
@@ -489,6 +516,15 @@ function ReaderInner({ article }: { article: Article }) {
   // A short line above the title: where this came from.
   const kicker = article.source ? article.source.split(/,|\(/)[0].trim() : article.origin === "paste" ? "Pasted text" : undefined;
 
+  const renderedBlocks = useMemo(() => (
+    article.blocks.map((b) => (
+      <Block key={b.id} block={b} n={ix.numbers.get(b.id)} first={b.id === firstPara}
+        marks={marksByBlock.get(b.id) ?? EMPTY} activeGloss={activeGloss} hoverGloss={hoverGloss}
+        activeHighlight={activeHighlight} fresh={enteringHighlight ?? enteringGloss}
+        cursor={cursor === b.id} hasAt={atBlocks.has(b.id)} onAsk={onAskBlock} />
+    ))
+  ), [article.blocks, ix, firstPara, marksByBlock, activeGloss, hoverGloss, activeHighlight, enteringHighlight, enteringGloss, cursor, atBlocks, onAskBlock]);
+
   return (
     <ReaderContext.Provider value={api}>
       <title>{`${article.title}, glossed`}</title>
@@ -496,31 +532,31 @@ function ReaderInner({ article }: { article: Article }) {
         <TopBar currentN={current ? ix.numbers.get(current) ?? null : null} pastTitle={pastTitle} listenFrom={askAnchor} />
 
         <main className="relative z-[1] px-4 pb-10 pt-[calc(var(--topbar-h)+64px)] sm:px-6">
-          <div className="reader-grid">
-            <div className="rg-rail relative">
-              <div className="sticky top-[calc(var(--topbar-h)+28px)] h-[calc(100dvh-var(--topbar-h)-64px)]">{withRail && showRail && <Rail articleEl={articleEl} />}</div>
+          <div className="reader-grid" data-left-collapsed={!showRail}>
+            <div className="rg-rail relative z-30">
+              <div className="sticky top-[calc(var(--topbar-h)+28px)] flex h-[calc(100dvh-var(--topbar-h)-64px)] flex-col gap-3">{withRail && showRail && <Contents align="left" />}{withRail && showRail && <div className="min-h-0 flex-1"><Rail articleEl={articleEl} /></div>}</div>
             </div>
             <div className="rg-numgap" aria-hidden />
 
             <div className="min-w-0">
               <header className="mb-14">
                 {kicker && (
-                  <p className="focus-hide rise mb-6 flex items-center gap-2 text-[13px] font-medium text-ink-3">
+                  <p className="focus-hide mb-6 flex items-center gap-2 text-[13px] font-medium text-ink-3">
                     <span aria-hidden className="size-1.5 rounded-full bg-[var(--rubric)]" />
                     <span className="truncate">{kicker}</span>
                   </p>
                 )}
-                <h1 className={`rise font-serif font-[380] tracking-[-0.022em] text-ink text-balance [font-variation-settings:'opsz'_72] ${titleClass(article.title)}`} style={{ animationDelay: "40ms" }}>
+                <h1 className={`font-serif font-[380] tracking-[-0.022em] text-ink text-balance [font-variation-settings:'opsz'_72] ${titleClass(article.title)}`} style={{ animationDelay: "40ms" }}>
                   {article.title}
                 </h1>
                 {article.dek && (
-                  <p className="focus-hide rise mt-5 max-w-[38rem] text-[clamp(1.05rem,1.7vw,1.19rem)] leading-[1.55] text-ink-2 text-pretty" style={{ animationDelay: "90ms" }}>
+                  <p className="focus-hide mt-5 max-w-[38rem] text-[clamp(1.05rem,1.7vw,1.19rem)] leading-[1.55] text-ink-2 text-pretty" style={{ animationDelay: "90ms" }}>
                     {article.dek}
                   </p>
                 )}
 
                 {/* Byline: who and when on one line, how long underneath, the original on the right. */}
-                <div className="focus-hide rise mt-8 flex items-center gap-4 border-t border-rule pt-5" style={{ animationDelay: "140ms" }}>
+                <div className="focus-hide mt-8 flex items-center gap-4 border-t border-rule pt-5" style={{ animationDelay: "140ms" }}>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[14.5px] leading-snug text-ink">
                       {article.author ? <span className="font-medium">{article.author}</span> : <span className="font-medium">{kicker ?? "Untitled source"}</span>}
@@ -542,28 +578,13 @@ function ReaderInner({ article }: { article: Article }) {
                   )}
                 </div>
                 <CarefulRead article={article} />
-                <div className="focus-hide rise" style={{ animationDelay: "200ms" }}>
+                <div className="focus-hide" style={{ animationDelay: "200ms" }}>
                   <Brief />
                 </div>
               </header>
 
               <div ref={setArticleEl} className="prose-read" onClick={onTextClick} onMouseOver={onTextOver} onMouseLeave={() => setUI({ hoverGloss: null })}>
-                {article.blocks.map((b) => (
-                  <Block
-                    key={b.id}
-                    block={b}
-                    n={ix.numbers.get(b.id)}
-                    first={b.id === firstPara}
-                    marks={marksByBlock.get(b.id) ?? EMPTY}
-                    activeGloss={activeGloss}
-                    hoverGloss={hoverGloss}
-                    activeHighlight={activeHighlight}
-                    fresh={enteringHighlight ?? enteringGloss}
-                    cursor={cursor === b.id}
-                    hasAt={atBlocks.has(b.id)}
-                    onAsk={onAskBlock}
-                  />
-                ))}
+                {renderedBlocks}
               </div>
 
               <footer className="focus-hide mt-16 border-t border-rule pt-10 text-[13.5px] leading-relaxed text-ink-3">
@@ -578,7 +599,7 @@ function ReaderInner({ article }: { article: Article }) {
                   <button type="button" onClick={() => setUI({ notebookOpen: true })} className="h-9 rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
                     Open your notebook
                   </button>
-                  <Link href="/" className="inline-flex h-9 items-center rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
+                  <Link href="/library" className="inline-flex h-9 items-center rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
                     Back to the library
                   </Link>
                 </div>
@@ -602,8 +623,7 @@ function ReaderInner({ article }: { article: Article }) {
         )}
 
         <Lens rootEl={articleEl} openHighlight={openHl} />
-        <VocabularyHighlights root={articleEl} />
-        <WordWise root={articleEl} />
+        <VocabularyHighlights root={articleEl} /><WordWise root={articleEl} />
         <ListenBar />
         <SignInNudge />
         <Notebook />
@@ -617,7 +637,7 @@ function ReaderInner({ article }: { article: Article }) {
             <button
               type="button"
               onClick={() => {
-                window.scrollTo({ top: 0, behavior: "smooth" });
+                window.scrollTo({ top: 0, behavior: readingScrollBehavior() });
                 setToast(null);
               }}
               className="font-medium underline decoration-lens-mute underline-offset-4"
