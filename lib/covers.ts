@@ -41,6 +41,8 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
 
 const urls = new Map<string, string>();
 
+export const cachedPaintedUrl = (id: string): string | null => urls.get(id) ?? null;
+
 /** A painted cover's picture, as an object URL: this device first, then the account. */
 export async function paintedUrl(id: string): Promise<string | null> {
   const hit = urls.get(id);

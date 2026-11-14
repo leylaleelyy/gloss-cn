@@ -1169,12 +1169,18 @@ button.plank-label:hover .plank-n {
   padding: 26px 24px 20px 30px;
 }
 .ob-page-in > * {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out);
 }
 .ob-stage[data-phase="open"] .ob-page-in > *,
 .ob-stage[data-phase="leaving"] .ob-page-in > * {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   opacity: 1;
   transform: none;
   transition-duration: 0.55s;
@@ -1292,11 +1298,7 @@ button.plank-label:hover .plank-n {
   font-variant-numeric: tabular-nums;
 }
 .ob-dek {
-  display: -webkit-box;
   margin-top: 18px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
   font-family: var(--font-serif);
   font-size: 15.5px;
   line-height: 1.5;
@@ -1396,6 +1398,7 @@ button.plank-label:hover .plank-n {
   transform-style: preserve-3d;
 }
 .ob-cover-front {
+  transform: translateZ(1px);
   overflow: hidden;
   border-radius: 3px 6px 6px 3px;
   box-shadow: 0 34px 60px -30px rgb(0 0 0 / 0.55);
@@ -1404,7 +1407,7 @@ button.plank-label:hover .plank-n {
 .ob-cover-inside {
   display: grid;
   place-items: center;
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) translateZ(1px);
   border-radius: 6px 3px 3px 6px;
   border: 5px solid var(--c);
   background-color: color-mix(in oklab, var(--c2) 18%, #f6f0e3);
@@ -2081,3 +2084,15 @@ button.starter-card:active {
     transition: opacity 0.2s ease;
   }
 }
+
+/* Keep the painted cover on one composited face throughout the turn. */
+.ob-stage[data-phase="open"] .ob-cover-front,
+.ob-stage[data-phase="leaving"] .ob-cover-front { visibility: hidden; }
+.ob-page-in { overscroll-behavior: contain; scrollbar-gutter: stable; }
+.ob-kicker, .ob-sub { flex-wrap: wrap; row-gap: 8px; }
+.ob-title-btn { max-width: 100%; overflow-wrap: anywhere; }
+.ob-stage:not([data-phase="open"]) .ob-page { pointer-events: none; }
+
+/* A phone shows the information page, never a cropped half of the bookplate. */
+.ob-stage[data-layout="single"][data-phase="open"] .ob-cover,
+.ob-stage[data-layout="single"][data-phase="leaving"] .ob-cover { visibility: hidden; }

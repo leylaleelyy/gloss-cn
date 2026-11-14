@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useState } from "react";
-import { paintedUrl } from "@/lib/covers";
+import { cachedPaintedUrl, paintedUrl } from "@/lib/covers";
 import { iconSrc, lookOf, TOPIC, topicArtSrc, type Book, type Look, type TagKey, type TopicKey } from "@/lib/library";
 
 /** One of the library's own emoji: a small clay figure for a topic or a tag. */
@@ -65,8 +65,8 @@ export const Spine = memo(function Spine({ book, look = lookOf(book) }: { book: 
  * this text), then the page's own picture printed in the topic's ink, then the
  * topic's plate.
  */
-export function Plate({ book, reveal = false }: { book: Book; reveal?: boolean }) {
-  const [painted, setPainted] = useState<string | null>(null);
+export function Plate({ book, reveal = false, eager = false }: { book: Book; reveal?: boolean; eager?: boolean }) {
+  const [painted, setPainted] = useState<string | null>(() => book.cover === "painted" ? cachedPaintedUrl(book.id) : null);
   const [broken, setBroken] = useState(false);
   useEffect(() => {
     if (book.cover !== "painted") return;
@@ -87,7 +87,7 @@ export function Plate({ book, reveal = false }: { book: Book; reveal?: boolean }
     return (
       <span className="duotone" style={{ ["--ink-c" as string]: t.shades[2] }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={book.image} alt="" decoding="async" loading="lazy" draggable={false} referrerPolicy="no-referrer" className={cls} onError={() => setBroken(true)} />
+        <img src={book.image} alt="" decoding="async" loading={eager ? "eager" : "lazy"} draggable={false} referrerPolicy="no-referrer" className={cls} onError={() => setBroken(true)} />
       </span>
     );
   }
@@ -99,12 +99,12 @@ export function Plate({ book, reveal = false }: { book: Book; reveal?: boolean }
  * The front of a book, for face-out display and for the book in your hands.
  * Sized by its container, so the same cover works at any scale.
  */
-export const Cover = memo(function Cover({ book, look = lookOf(book), draw = false }: { book: Book; look?: Look; draw?: boolean }) {
+export const Cover = memo(function Cover({ book, look = lookOf(book), draw = false, eager = false }: { book: Book; look?: Look; draw?: boolean; eager?: boolean }) {
   const t = TOPIC[book.topic];
   return (
     <div className="cover" data-light={look.light || undefined} style={{ background: look.color, color: look.fg }}>
       <div className="cover-plate">
-        <Plate book={book} reveal={draw} />
+        <Plate book={book} reveal={draw} eager={eager} />
       </div>
       <div className="cover-type">
         <p className="cover-kicker">

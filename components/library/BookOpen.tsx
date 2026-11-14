@@ -16,7 +16,7 @@ type Geo = { W: number; H: number; D: number; wide: boolean; vw: number; vh: num
 
 function measure(book: Book): Geo {
   const vw = window.innerWidth, vh = window.innerHeight;
-  const wide = vw >= 820;
+  const wide = vw >= 720;
   const W = Math.round(wide ? Math.min(340, (vw - 140) / 2, (vh - 96) / ASPECT) : Math.min(vw - 40, 360, (vh - 110) / ASPECT));
   const H = Math.round(W * ASPECT);
   const look = lookOf(book);
@@ -74,7 +74,7 @@ export function BookOpen({
   onShelve: (b: Book, patch: { topic?: TopicKey; favorite?: boolean; title?: string }) => void;
   onRemove: (b: Book) => void;
 }) {
-  const [g] = useState(() => measure(book));
+  const [g, setGeometry] = useState(() => measure(book));
   const [phase, setPhase] = useState<"in" | "open" | "out" | "leaving">("in");
   const [renaming, setRenaming] = useState(false);
   const bookRef = useRef<HTMLDivElement>(null);
@@ -82,6 +82,8 @@ export function BookOpen({
   const coverRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLButtonElement>(null);
   const closing = useRef(false);
+  const mounted = useRef(true);
+  const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const look = lookOf(book);
   const t = TOPIC[book.topic];
   const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -99,35 +101,48 @@ export function BookOpen({
   }, [origin.el]);
 
   useLayoutEffect(() => {
+    mounted.current = true;
     const b = bookRef.current!, c = coverRef.current!, s = shiftRef.current!;
+    const end = T(0, 0, 1, -g.D / 2, 0);
+    const opened = `${coverZ} rotateY(-180deg)`;
+    const shifted = `translateX(${shift}px)`;
+    // Inline styles are the settled pose; animations temporarily override them.
+    b.style.transform = end;
+    c.style.transform = opened;
+    s.style.transform = shifted;
+    const animations: Animation[] = [];
     if (reduce || desktop) {
-      b.style.transform = T(0, 0, 1, -g.D / 2, 0);
-      c.style.transform = `${coverZ} rotateY(-180deg)`;
-      s.style.transform = `translateX(${shift}px)`;
       setPhase("open");
-      if (!reduce) {
-        const entrance = s.animate(
-          [{ opacity: 0, transform: `translateX(${shift}px) translateY(12px)` }, { opacity: 1, transform: `translateX(${shift}px) translateY(0)` }],
-          { duration: 180, easing: ease }
-        );
-        return () => entrance.cancel();
-      }
-      return;
+    } else {
+      const delay = origin.kind === "spine" ? 700 : 500;
+      const opts: KeyframeAnimationOptions = { duration: 780, delay, easing: easeInOut, fill: "both" };
+      animations.push(
+        b.animate(flight(g, origin), { duration: origin.kind === "spine" ? 840 : 660, fill: "both" }),
+        c.animate([{ transform: `${coverZ} rotateY(0deg)` }, { transform: opened }], opts),
+        s.animate([{ transform: "translateX(0px)" }, { transform: shifted }], opts),
+      );
+      void Promise.all(animations.map(a => a.finished)).then(() => {
+        if (!mounted.current || closing.current) return;
+        animations.forEach(a => a.cancel());
+        setPhase("open");
+      }).catch(() => {});
     }
-    const fly = b.animate(flight(g, origin), { duration: origin.kind === "spine" ? 840 : 660, fill: "forwards" });
-    // The cover starts to open just before the book lands, so the two read as one movement.
-    const delay = origin.kind === "spine" ? 700 : 500;
-    const opts: KeyframeAnimationOptions = { duration: 780, delay, easing: easeInOut, fill: "forwards" };
-    c.animate([{ transform: `${coverZ} rotateY(0deg)` }, { transform: `${coverZ} rotateY(-180deg)` }], opts);
-    s.animate([{ transform: "translateX(0px)" }, { transform: `translateX(${shift}px)` }], opts);
-    const t1 = setTimeout(() => setPhase("open"), delay + 300);
     return () => {
-      clearTimeout(t1);
-      fly.cancel();
+      mounted.current = false;
+      if (readTimer.current) clearTimeout(readTimer.current);
+      [b, c, s].forEach(el => el.getAnimations().forEach(a => a.cancel()));
     };
-    // Once, on mount.
+    // Geometry changes after opening update the settled pose, never replay the entrance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (phase !== "open") return;
+    const resize = () => setGeometry(measure(book));
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [phase, book]);
 
   const close = useCallback(async () => {
     if (closing.current) return;
@@ -142,18 +157,21 @@ export function BookOpen({
       return;
     }
     const opts: KeyframeAnimationOptions = { duration: 540, easing: easeInOut, fill: "forwards" };
-    c.getAnimations().forEach((a) => a.commitStyles?.());
-    c.animate([{ transform: `${coverZ} rotateY(-180deg)` }, { transform: `${coverZ} rotateY(0deg)` }], opts);
-    s.animate([{ transform: `translateX(${shift}px)` }, { transform: "translateX(0px)" }], opts);
+    // Freeze the displayed pose before replacing animations (including an interrupted entrance).
+    const current = [b, c, s].map(el => getComputedStyle(el).transform);
+    [b, c, s].forEach((el, i) => { el.style.transform = current[i]; el.getAnimations().forEach(a => a.cancel()); });
+    c.animate([{ transform: current[1] }, { transform: `${coverZ} rotateY(0deg)` }], opts);
+    s.animate([{ transform: current[2] }, { transform: "translateX(0px)" }], opts);
     // Back to wherever it came from, measured again in case the shelf moved.
-    const back = flight(measure(book), origin)
+    const back = flight(g, origin)
       .map((k) => ({ ...k, offset: 1 - k.offset }))
       .reverse()
       .map((k, i, all) => ({ ...k, easing: i < all.length - 1 ? ease : undefined }));
+    back[0].transform = current[0];
     const fly = b.animate(back, { duration: origin.kind === "spine" ? 760 : 600, delay: 360, fill: "forwards" });
     await fly.finished.catch(() => {});
-    onClose();
-  }, [book, coverZ, onClose, origin, reduce, desktop, shift]);
+    if (mounted.current) onClose();
+  }, [g, coverZ, onClose, origin, reduce, desktop]);
 
   useEffect(() => {
     if (phase === "open") readRef.current?.focus({ preventScroll: true });
@@ -176,8 +194,10 @@ export function BookOpen({
   }, [close]);
 
   const read = () => {
+    if (closing.current) return;
+    closing.current = true;
     setPhase("leaving");
-    setTimeout(() => onRead(book), reduce || desktop ? 0 : 360);
+    readTimer.current = setTimeout(() => onRead(book), reduce || desktop ? 0 : 360);
   };
 
   const reading = book.pct > 0 && book.pct < 1;
@@ -186,14 +206,14 @@ export function BookOpen({
   const shelved = new Date(book.added).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
   return createPortal(
-    <div className="ob-stage" data-phase={phase} role="dialog" aria-modal aria-label={book.title}>
+    <div className="ob-stage" data-phase={phase} data-layout={g.wide ? "spread" : "single"} role="dialog" aria-modal aria-label={book.title}>
       <div className="ob-backdrop" onClick={close} />
       <div className="ob-world">
-        <div ref={shiftRef} className="ob-shift">
+        <div ref={shiftRef} className="ob-shift" style={{ transform: `translateX(${shift}px)` }}>
           <div
             ref={bookRef}
             className="ob-book"
-            style={{ width: g.W, height: g.H, marginLeft: -g.W / 2, marginTop: -g.H / 2, transform: flight(g, origin)[0].transform, ["--c" as string]: look.color }}
+            style={{ width: g.W, height: g.H, marginLeft: -g.W / 2, marginTop: -g.H / 2, transform: T(0, 0, 1, -g.D / 2, 0), ["--c" as string]: look.color }}
           >
             {/* The back board, the spine, and the edges of the pages. */}
             <div className="ob-face ob-back" style={{ transform: `rotateY(180deg) translateZ(${g.D / 2}px)`, background: look.color }} />
@@ -328,9 +348,9 @@ export function BookOpen({
             </div>
 
             {/* The front board: the cover outside, a bookplate inside. */}
-            <div ref={coverRef} className="ob-cover" style={{ transform: `${coverZ} rotateY(0deg)` }}>
+            <div ref={coverRef} className="ob-cover" style={{ transform: `${coverZ} rotateY(-180deg)` }}>
               <div className="ob-face ob-cover-front">
-                <Cover book={book} look={look} draw />
+                <Cover book={book} look={look} eager />
               </div>
               <div className="ob-face ob-cover-inside" style={{ ["--c" as string]: look.color, ["--c2" as string]: t.shades[3] }}>
                 {/* A bookplate pasted inside the cover: whose it is, and when it was shelved. */}
@@ -370,6 +390,7 @@ function TitleField({ title, onDone }: { title: string; onDone: (title: string |
     const el = ref.current!;
     el.focus({ preventScroll: true });
     el.select();
+    el.style.height = `${el.scrollHeight}px`;
   }, []);
 
   return (
@@ -380,6 +401,7 @@ function TitleField({ title, onDone }: { title: string; onDone: (title: string |
       rows={1}
       aria-label="Title"
       spellCheck={false}
+      onInput={(e) => { e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
