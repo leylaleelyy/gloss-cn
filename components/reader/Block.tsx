@@ -88,7 +88,7 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
     const tones = [...new Set(glossMarks.map(m => m.color ?? "explain"))];
     const tone = focusedMark ? focusedMark.color ?? "explain" : tones.length === 1 ? tones[0] : undefined;
     const mixed = tones.length > 1;
-    const colors = tones.map(t => t === "analysis" ? "var(--analysis-ink)" : t === "dictionary" ? "var(--dictionary-ink)" : "var(--rubric-line)");
+    const colors = tones.map(t => t === "ask" ? "var(--ask-ink)" : t === "analysis" ? "var(--analysis-ink)" : t === "dictionary" ? "var(--dictionary-ink)" : "var(--rubric-line)");
     const mixedBackground = mixed && !focusedMark ? `linear-gradient(to right, ${colors.map((c, i) => `${c} ${i * 100 / colors.length}% ${(i + 1) * 100 / colors.length}%`).join(", ")})` : undefined;
     const hls = covering.filter((m) => m.kind === "hl");
     const h = hls.map((m) => m.id);
@@ -99,6 +99,7 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
       h.length && activeHighlight && h.includes(activeHighlight) ? "is-active" : "",
       fresh && (g.includes(fresh) || h.includes(fresh)) ? "is-new" : "",
       g.length ? "m-gloss" : "",
+      tone === "ask" ? "m-ask" : "",
       tone === "analysis" ? "m-analysis" : "",
       tone === "dictionary" ? "m-dictionary" : "",
       mixed && !focusedMark ? "m-mixed" : "",
@@ -109,7 +110,7 @@ function segments(block: BlockT, marks: Mark[], activeGloss: string | null, hove
       .filter(Boolean)
       .join(" ");
     out.push(
-      <span key={key} className={cls} data-pen={g.length ? penTone : undefined} data-g={g.length ? g.join(" ") : undefined} style={mixedBackground ? { backgroundImage: mixedBackground } : undefined} title={mixed ? tones.map(t => t === "analysis" ? "Analyze" : t === "dictionary" ? "Dictionary" : "Explain").join(" · ") + " · Click to switch notes" : undefined} data-h={h.length ? h.join(" ") : undefined} data-c={color && color !== "yellow" ? color : undefined}>
+      <span key={key} className={cls} data-pen={g.length ? penTone : undefined} data-g={g.length ? g.join(" ") : undefined} style={mixedBackground ? { backgroundImage: mixedBackground } : undefined} title={mixed ? tones.map(t => t === "ask" ? "Ask" : t === "analysis" ? "Analyze" : t === "dictionary" ? "Dictionary" : "Explain").join(" · ") + " · Click to switch notes" : undefined} data-h={h.length ? h.join(" ") : undefined} data-c={color && color !== "yellow" ? color : undefined}>
         {wrapRun(run, text, "r")}
       </span>
     );

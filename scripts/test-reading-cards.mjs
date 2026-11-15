@@ -21,13 +21,22 @@ const until=async expression=>{console.log('Waiting:',expression);for(let i=0;i<
 await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
 await send('Page.navigate',{url:baseUrl+'/read/on-a-piece-of-chalk'});
 await until(`document.querySelectorAll('.prose-read .blk[data-type="p"] .blk-text').length > 20`);
-const blocks=await evaluate(`Array.from(document.querySelectorAll('.prose-read .blk[data-type="p"][data-n]')).map(el=>({id:el.dataset.block,n:Number(el.dataset.n),quote:el.querySelector('.blk-text').textContent.slice(0,16)}))`);
+const blocks=await evaluate(`Array.from(document.querySelectorAll('.prose-read .blk[data-type="p"][data-n]')).filter(el=>el.querySelector('.blk-text')).map(el=>({id:el.dataset.block,n:Number(el.dataset.n),quote:el.querySelector('.blk-text').textContent.slice(0,16)}))`);
 const origin=blocks[2],far=blocks.at(-5),middle=blocks[Math.floor(blocks.length/2)];
 const note=(id,block,target,follow=false)=>({id,articleId:'on-a-piece-of-chalk',action:'ask',question:'Initial question',anchor:{start:{b:block.id,o:0},end:{b:block.id,o:16},quote:block.quote},createdAt:1,turns:[{role:'assistant',content:`## 图片概览\n==Initial answer summary.== See [¶${target.n}] and [¶${block.n}].`},...(follow?[{role:'user',content:'Why is this important?'},{role:'assistant',content:'==It explains the evidence.== More detail.'},{role:'user',content:'What is the conclusion?'},{role:'assistant',content:'==The conclusion connects both ideas.== More detail.'}]:[])]});
-await evaluate(`localStorage.setItem('gloss:v1',JSON.stringify({glosses:{'on-a-piece-of-chalk':${JSON.stringify([note('return-origin',origin,far,true),note('return-far',far,middle)])}},highlights:{},briefs:{},progress:{},library:[]}))`);
+await evaluate(`localStorage.setItem('gloss:v1',JSON.stringify({glosses:{'on-a-piece-of-chalk':${JSON.stringify([note('return-origin',origin,far,true),note('return-far',far,middle),note('ask-summary',blocks[6],middle),{...note('explain-color',blocks[6],middle),action:'explain',createdAt:2}])}},highlights:{},briefs:{},progress:{},library:[]}))`);
 await send('Page.navigate',{url:baseUrl+'/read/on-a-piece-of-chalk'});
 await until(`!!document.querySelector('[data-gloss="return-origin"].is-collapsed')`);
 assert.equal(await evaluate(`document.querySelectorAll('[data-gloss="return-origin"] .follow-up-summary').length`),2);
+await until(`document.querySelector('[data-gloss="ask-summary"]')?.classList.contains('is-mini')`);
+assert.ok(await evaluate(`document.querySelector('[data-gloss="ask-summary"] .note-summary')?.textContent.includes('Initial answer summary.')`),'Crowded single-turn Ask retains its answer');
+assert.ok(await evaluate(`document.querySelector('[data-gloss="ask-summary"]').textContent.includes('Initial question')`));
+for (const theme of ['paper','night']) {
+ const colors=await evaluate(`(()=>{document.documentElement.dataset.theme='${theme}';return ['ask-summary','explain-color'].map(id=>getComputedStyle(document.querySelector('[data-gloss="'+id+'"]')).getPropertyValue('--rubric-text').trim())})()`);
+ assert.notEqual(colors[0],colors[1],'Ask and Explain must be distinct in '+theme);
+}
+await evaluate(`document.documentElement.dataset.theme='paper'`);
+
 for(const phrase of ['Initial answer summary.','Why is this important?','It explains the evidence.','What is the conclusion?','The conclusion connects both ideas.']) assert.ok(await evaluate(`document.querySelector('[data-gloss="return-origin"]').textContent.includes(${JSON.stringify(phrase)})`));
 for(const [width,height] of [[1440,900],[744,1133]]) {
  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<960});await sleep(300);

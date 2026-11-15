@@ -237,7 +237,7 @@ function ReaderInner({ article }: { article: Article }) {
       }
     };
     for (const h of highlights) place(h.anchor, "hl", h.id, h.color, Boolean(h.note));
-    for (const g of glosses) if (g.anchor) place(g.anchor, "gloss", g.id, g.action === "simplify" ? "analysis" : g.action === "define" ? "dictionary" : undefined);
+    for (const g of glosses) if (g.anchor) place(g.anchor, "gloss", g.id, g.action === "simplify" ? "analysis" : g.action === "define" ? "dictionary" : g.action === "ask" ? "ask" : undefined);
     if (pending) place(pending, "pending", "pending");
     return map;
   }, [glosses, highlights, pending, ix, article.blocks]);

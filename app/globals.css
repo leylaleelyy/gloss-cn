@@ -2270,3 +2270,17 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
 .provider-footer { flex-shrink: 0; padding-top: 12px; border-top: 1px solid var(--rule); background: var(--bg-raised); }
 .reader-tools .provider-footer button { min-height: 32px; min-width: 0; }
 .provider-footer button { min-height: 32px; }
+
+/* Questions use blue ink; explanations retain the reader's chosen pen. */
+:root { --ask-ink: #356aab; }
+[data-theme="night"], [data-theme="ink"] { --ask-ink: #94bdf1; }
+.gloss[data-action="ask"], .notebook-gloss[data-action="ask"], g[data-action="ask"], .m-ask {
+  --rubric: var(--ask-ink);
+  --rubric-text: var(--ask-ink);
+  --rubric-key: color-mix(in oklab, var(--ask-ink) var(--key-a, 13%), transparent);
+  --rubric-line: color-mix(in oklab, var(--ask-ink) 55%, transparent);
+  --rubric-wash: color-mix(in oklab, var(--ask-ink) 12%, transparent);
+  --rubric-wash-strong: color-mix(in oklab, var(--ask-ink) 22%, transparent);
+}
+.gloss[data-action="ask"] { border-left-color: var(--rubric-line); }
+.gloss[data-action="ask"].is-active { border-left-color: var(--ask-ink); }

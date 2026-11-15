@@ -177,7 +177,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
         onMouseLeave={() => setUI({ hoverGloss: null })}
       >
         <div className="flex items-baseline gap-2">
-          <p className="min-w-0 flex-1 truncate text-[13.5px] font-medium leading-[1.4] text-ink">
+          <p className={`min-w-0 flex-1 ${gloss.action === "ask" ? "line-clamp-2 text-rubric-text" : "truncate text-ink"} text-[13.5px] font-medium leading-[1.4]`}>
             {gloss.action === "define" ? <span className="text-[12px] font-normal text-ink-3">{meaning?.word || gloss.anchor?.quote || label}</span> : gloss.question ?? (
               <>
                 <span className="text-rubric-text">{label}</span>
@@ -196,7 +196,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
           definitionLines.length ? <div className="dictionary-preview mt-1">
             {definitionLines.map((line, i) => <p key={i} className={`line-clamp-3 text-[13.5px] leading-[1.5] ${i ? 'mt-1 text-ink-3' : 'text-ink'}`}>{line}</p>)}
           </div> : <Gist t={first} />
-        ) : (follow > 0 || !mini || gloss.action === "explain" || gloss.action === "simplify") && <Gist t={first} prominent={gloss.action === "explain" || gloss.action === "simplify"} />}
+        ) : (follow > 0 || !mini || gloss.action === "ask" || gloss.action === "explain" || gloss.action === "simplify") && <Gist t={first} prominent={gloss.action === "explain" || gloss.action === "simplify"} />}
         {gloss.turns.slice(1).map((turn, index) => {
           if (turn.role !== "user") return null;
           const answer = gloss.turns[index + 2];
