@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { parseAnswerBlocks, tableCells } from '../lib/answer-markdown.ts';
+const parts=parseAnswerBlocks('## 图片概览\n这是**说明**。\n### 关键细节\n- 第一项\n- 第二项\n接着解释。\n1. 首先\n2. 然后\n> 注意局限\n\n---\n\n| 项目 | 解释 |\n| --- | --- |\n| A | 内容 |');
+assert.deepEqual(parts.map(p=>p.kind),['heading','p','heading','ul','p','ol','quote','hr','table']);
+assert.equal(parts[0].lines[0],'图片概览');
+assert.equal(parts[2].level,3);
+assert.equal(parts[5].start,1);
+assert.deepEqual(tableCells('| A\\|B | 内容 |'),['A|B','内容']);
+assert.deepEqual(parseAnswerBlocks('```text\n## literal\n<script>bad()</script>')[0],{kind:'code',lines:['## literal','<script>bad()</script>']});
+assert.equal(parseAnswerBlocks('A C# example.')[0].kind,'p');
+assert.equal(parseAnswerBlocks('### Heading\nText\n')[1].lines[0],'Text');
+assert.equal(parseAnswerBlocks('3. Third\n4. Fourth')[0].start,3);
+console.log('PASS: headings without blank lines, mixed blocks, ordered lists, tables, quotes and incomplete code fences.');

@@ -60,5 +60,15 @@ for(const width of [744,375]) {
  await send('Emulation.setDeviceMetricsOverride',{width,height:1133,deviceScaleFactor:2,mobile:true});await sleep(100);
  assert.ok(await evaluate(`(()=>{const p=document.querySelector('[role="dialog"][aria-label="AI settings"]');return p.scrollWidth<=p.clientWidth})()`));
 }
+for(const [width,height] of [[744,1133],[1133,744],[375,667],[744,400]]) {
+ await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await sleep(250);
+ for(const end of [0,99999]) {
+  await evaluate(`document.querySelector('.provider-scroll').scrollTop=${end}`);
+  const bounds=await evaluate(`(()=>{const footer=document.querySelector('.provider-footer'),save=Array.from(footer.querySelectorAll('button')).find(b=>b.textContent==='Save'),r=save.getBoundingClientRect(),body=document.querySelector('.provider-scroll');return {top:r.top,bottom:r.bottom,height:innerHeight,scroll:body.scrollTop,scrollable:body.scrollHeight>body.clientHeight,visible:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===save}})()`);
+  assert.ok(bounds.top>=0&&bounds.bottom<=height&&bounds.visible,'Save must remain visible: '+JSON.stringify({width,height,end,bounds}));
+  if(end&&bounds.scrollable) assert.ok(bounds.scroll>0);
+ }
+}
+console.log('PASS: fixed settings footer across tablet, landscape, phone and short viewports.');
 console.log('PASS: vocabulary return URL and direct-entry fallback, vision presets, key reset, saving/reopening and narrow settings layout.');
 }finally{ws?.close();chrome.kill();}

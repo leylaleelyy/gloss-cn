@@ -10,6 +10,7 @@ export function Popover({
   align = "right",
   width = 300,
   triggerClass = "",
+  panelClass = "",
   tip,
   openOn,
 }: {
@@ -19,6 +20,7 @@ export function Popover({
   align?: "left" | "right";
   width?: number;
   triggerClass?: string;
+  panelClass?: string;
   /** The trigger's tooltip; defaults to the label. */
   tip?: string;
   /** A window event that opens the panel from elsewhere on the page. */
@@ -113,7 +115,7 @@ export function Popover({
           ref={panelRef}
           role="dialog"
           aria-label={label}
-          className={`pop absolute top-[calc(100%+8px)] z-[60] overflow-y-auto overscroll-contain p-4 ${align === "right" ? "right-0" : "left-0"}`}
+          className={`pop absolute top-[calc(100%+8px)] z-[60] overflow-y-auto overscroll-contain p-4 ${panelClass} ${align === "right" ? "right-0" : "left-0"}`}
           style={{ width, ["--origin" as string]: align === "right" ? "top right" : "top left" }}
         >
           {children(() => {

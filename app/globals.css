@@ -2243,3 +2243,30 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .reader-grid > .rg-margin { display: none; }
   .prose-read .pnum { display: none; }
 }
+
+/* Answer cards keep Markdown structure without article-sized typography. */
+.answer-heading { margin: 1em 0 .4em; font-size: 14px; font-weight: 650; line-height: 1.4; color: var(--ink); }
+.answer-heading:first-child { margin-top: 0; }
+.answer-heading-1 { font-size: 15.5px; }
+.answer-heading-3 { font-size: 13.5px; color: var(--ink-2); }
+.answer-quote { margin: .75em 0; padding: .25em 0 .25em .8em; border-left: 2px solid var(--rubric-line); color: var(--ink-2); }
+.answer-rule { margin: 1em 0; border: 0; border-top: 1px solid var(--rule); }
+.answer-code { max-width: 100%; overflow-x: auto; margin: .75em 0; padding: 10px 12px; border-radius: 8px; background: var(--bg-sunk); font-size: 12px; white-space: pre; }
+.answer-code code { padding: 0; font-family: monospace; background: none; }
+.answer-table { max-width: 100%; overflow-x: auto; margin: .75em 0; border: 1px solid var(--rule); border-radius: 8px; font-size: 12.5px; }
+.answer-table table { width: 100%; border-collapse: collapse; }
+.answer-table th, .answer-table td { padding: 7px 9px; text-align: left; border-bottom: 1px solid var(--rule); }
+.answer-table th { font-weight: 600; background: var(--bg-sunk); }
+.answer-table tr:last-child td { border-bottom: 0; }
+.gloss-body ol.answer-list { list-style: decimal; padding-left: 1.4em; }
+.gloss-body ol.answer-list li { padding-left: .15em; }
+.gloss-body ol.answer-list li::before { display: none; }
+.gloss-body .answer-list + p { margin-top: .6em; }
+
+/* One scroll area for fields; actions remain visible at every scroll position. */
+.pop.provider-popover[role="dialog"] { display: flex; flex-direction: column; overflow: hidden; }
+.provider-panel { display: flex; flex-direction: column; min-height: 0; max-height: 75dvh; }
+.provider-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 2px 14px; scrollbar-width: thin; }
+.provider-footer { flex-shrink: 0; padding-top: 12px; border-top: 1px solid var(--rule); background: var(--bg-raised); }
+.reader-tools .provider-footer button { min-height: 32px; min-width: 0; }
+.provider-footer button { min-height: 32px; }

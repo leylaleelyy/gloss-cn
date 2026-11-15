@@ -2,7 +2,7 @@
 // Uses isolated browser storage; never submits a question or calls an AI provider.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {readFile,mkdtemp} from 'node:fs/promises';
+import {readFile,writeFile,mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const profile = await mkdtemp(join(tmpdir(), 'gloss-cards-'));
@@ -20,10 +20,10 @@ const evaluate=async expression=>{const r=await send('Runtime.evaluate',{express
 const until=async expression=>{console.log('Waiting:',expression);for(let i=0;i<150;i++){if(await evaluate(expression))return;await sleep(200)}throw Error('Timed out: '+expression+'; page: '+await evaluate('document.body.innerText.slice(0,2000)'))};
 await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
 await send('Page.navigate',{url:baseUrl+'/read/on-a-piece-of-chalk'});
-await until('!!document.querySelector(".prose-read")');
-const blocks=await evaluate(`Array.from(document.querySelectorAll('.prose-read [data-block][data-n]')).map(el=>({id:el.dataset.block,n:Number(el.dataset.n),quote:el.querySelector('.blk-text').textContent.slice(0,16)}))`);
+await until(`document.querySelectorAll('.prose-read .blk[data-type="p"] .blk-text').length > 20`);
+const blocks=await evaluate(`Array.from(document.querySelectorAll('.prose-read .blk[data-type="p"][data-n]')).map(el=>({id:el.dataset.block,n:Number(el.dataset.n),quote:el.querySelector('.blk-text').textContent.slice(0,16)}))`);
 const origin=blocks[2],far=blocks.at(-5),middle=blocks[Math.floor(blocks.length/2)];
-const note=(id,block,target,follow=false)=>({id,articleId:'on-a-piece-of-chalk',action:'ask',question:'Initial question',anchor:{start:{b:block.id,o:0},end:{b:block.id,o:16},quote:block.quote},createdAt:1,turns:[{role:'assistant',content:`==Initial answer summary.== See [¶${target.n}] and [¶${block.n}].`},...(follow?[{role:'user',content:'Why is this important?'},{role:'assistant',content:'==It explains the evidence.== More detail.'},{role:'user',content:'What is the conclusion?'},{role:'assistant',content:'==The conclusion connects both ideas.== More detail.'}]:[])]});
+const note=(id,block,target,follow=false)=>({id,articleId:'on-a-piece-of-chalk',action:'ask',question:'Initial question',anchor:{start:{b:block.id,o:0},end:{b:block.id,o:16},quote:block.quote},createdAt:1,turns:[{role:'assistant',content:`## 图片概览\n==Initial answer summary.== See [¶${target.n}] and [¶${block.n}].`},...(follow?[{role:'user',content:'Why is this important?'},{role:'assistant',content:'==It explains the evidence.== More detail.'},{role:'user',content:'What is the conclusion?'},{role:'assistant',content:'==The conclusion connects both ideas.== More detail.'}]:[])]});
 await evaluate(`localStorage.setItem('gloss:v1',JSON.stringify({glosses:{'on-a-piece-of-chalk':${JSON.stringify([note('return-origin',origin,far,true),note('return-far',far,middle)])}},highlights:{},briefs:{},progress:{},library:[]}))`);
 await send('Page.navigate',{url:baseUrl+'/read/on-a-piece-of-chalk'});
 await until(`!!document.querySelector('[data-gloss="return-origin"].is-collapsed')`);
@@ -33,8 +33,15 @@ for(const [width,height] of [[1440,900],[744,1133]]) {
  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<960});await sleep(300);
  await evaluate(`window.scrollTo({top:document.querySelector('[data-block="${origin.id}"]').getBoundingClientRect().top+scrollY-180,behavior:'instant'});document.querySelector('[data-g="return-origin"]').click()`);
  await until(`!!document.querySelector('[data-gloss="return-origin"] [aria-label="Jump to paragraph ${far.n}"]')`);
+ assert.equal(await evaluate(`document.querySelector('[data-gloss="return-origin"] .answer-heading').textContent`),'图片概览');
+ assert.ok(!await evaluate(`document.querySelector('[data-gloss="return-origin"] .gloss-body').textContent.includes('##')`));
  await evaluate(`document.querySelector('[data-gloss="return-origin"] [aria-label="Jump to paragraph ${origin.n}"]').click()`);await sleep(600);
  assert.equal(await evaluate(`!!document.querySelector('.reading-return')`),false,'Nearby citation needs no return');
+ if(width===1440) {
+  const shot=await send('Page.captureScreenshot',{format:'png'});
+  await writeFile(join(profile,'markdown-card.png'),Buffer.from(shot.data,'base64'));
+  console.log('Card screenshot:',join(profile,'markdown-card.png'));
+ }
  const before=await evaluate(`document.querySelector('[data-block="${origin.id}"]').getBoundingClientRect().top`);
  await evaluate(`document.querySelector('[data-gloss="return-origin"] [aria-label="Jump to paragraph ${far.n}"]').click()`);
  await until(`!!document.querySelector('.reading-return')`);

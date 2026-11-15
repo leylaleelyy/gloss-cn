@@ -24,7 +24,7 @@ export function KeyMenu() {
     fetch("/api/key").then((response) => response.json()).then((data) => setAppModel(data.model || null)).catch(() => {});
   }, []);
   return (
-    <Popover label="AI settings" tip="Configure your AI provider" width={360} triggerClass={barBtn} openOn="gloss:key"
+    <Popover label="AI settings" tip="Configure your AI provider" width={360} panelClass="provider-popover" triggerClass={barBtn} openOn="gloss:key"
       trigger={<><KeyRound size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">AI settings</span></>}>
       {(close) => <ProviderPanel current={config} appModel={appModel} onSave={setConfig} close={close} />}
     </Popover>
@@ -76,7 +76,8 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
     finally { setChecking(false); }
   };
   return (
-    <div ref={panelRef} className="max-h-[75vh] overflow-y-auto">
+    <div ref={panelRef} className="provider-panel">
+      <div className="provider-scroll">
       <p className="text-[14px] font-medium text-ink">AI provider</p>
       <p className="mt-1 text-[12px] text-ink-3">Choose a provider and enter your API key. 选择服务商，填写密钥即可。</p>
       {appModel && <p className="mt-2 text-[12px] text-ink-2">{current.baseUrl ? "App default available" : "Connected using app default"}: {appModel}. Clear device settings to use it.</p>}
@@ -102,12 +103,15 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
         {field("imageModel", "Image model", "Required for painted covers")}
       </details>
       <p className="mt-3 text-[11px] text-ink-3">Saved on this device. AI requests send the relevant text or page images to the provider you choose.</p>
-      {message && <p role="status" className="mt-2 text-[12px] text-ink-2">{message}</p>}
-      <div className="mt-3 flex justify-between gap-2">
+      </div>
+      <footer className="provider-footer">
+      {message && <p role="status" className="mb-2 max-h-20 overflow-y-auto text-[12px] text-ink-2">{message}</p>}
+      <div className="flex items-center justify-between gap-2">
         <button type="button" className="text-[12px] text-ink-3" onClick={() => { localStorage.removeItem(PROVIDER_STORAGE); setDraft(initialDraft(EMPTY_PROVIDER)); setSelected("deepseek"); onSave({ ...EMPTY_PROVIDER }); window.dispatchEvent(new Event("gloss:provider")); setMessage("Device settings cleared."); }}>Clear</button>
         <button type="button" disabled={checking} className="text-[12px] text-ink-2" onClick={test}>{checking ? "Testing…" : "Test chat connection"}</button>
         <button type="button" onClick={save} className="rounded-lg bg-ink px-4 py-2 text-[12px] text-bg">Save</button>
       </div>
+      </footer>
     </div>
   );
 }

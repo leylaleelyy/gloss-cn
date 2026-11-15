@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, memo, type ReactNode } from "react";
+import { parseAnswerBlocks, tableCells } from "@/lib/answer-markdown";
 import { undash } from "@/lib/article";
 import type { Source } from "@/lib/models";
 import { useReader } from "./context";
@@ -22,10 +23,11 @@ export const unmark = (s: string) => s.replace(/==/g, "");
  */
 export function keyLine(s: string): string {
   const marked = s.match(/==([^=]+?)==/)?.[1];
-  const src = marked ?? s.replace(/^\s*([-*•]|\d+[.)])\s+/gm, "").split(/\n+/).find((l) => l.trim()) ?? "";
+  const src = marked ?? s.replace(/^\s*([-*•]|\d+[.)])\s+/gm, "").split(/\n+/).find((l) => l.trim() && !/^\s*#{1,6}\s/.test(l)) ?? "";
   // A citation that is part of the sentence ("[¶1] and [¶4] agree") stays as plain ¶1; trailing ones go.
   const clean = undash(src)
     .replace(/==/g, "")
+    .replace(/^\s*#{1,6}\s+/g, "")
     .replace(/(^|\b(?:and|or|to|in|with)\s|,\s)\[\s*¶\s?([\d\s-]+)\]/g, "$1¶$2")
     .replace(/\s?\[\s*¶[^\]]{0,60}\]/g, "")
     .replace(/\s?\[\d{1,2}(?:\s*,\s*\d{1,2})*\]/g, "")
@@ -40,31 +42,6 @@ export function keyLine(s: string): string {
     if (out.trim().length >= 40) break;
   }
   return out.trim();
-}
-
-type Part = { kind: "p" | "ul" | "ol"; lines: string[] };
-
-function parseBlocks(text: string): Part[] {
-  const parts: Part[] = [];
-  for (const chunk of text.split(/\n{2,}/)) {
-    const lines = chunk.split("\n").filter((l) => l.trim());
-    if (!lines.length) continue;
-    const isUl = lines.every((l) => /^\s*[-*•]\s+/.test(l));
-    const isOl = lines.every((l) => /^\s*\d+[.)]\s+/.test(l));
-    if (isUl || isOl) {
-      parts.push({ kind: isUl ? "ul" : "ol", lines: lines.map((l) => l.replace(/^\s*([-*•]|\d+[.)])\s+/, "")) });
-      continue;
-    }
-    // Mixed chunk: a lead line followed by list items.
-    const firstItem = lines.findIndex((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l));
-    if (firstItem > 0 && lines.slice(firstItem).every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l))) {
-      parts.push({ kind: "p", lines: [lines.slice(0, firstItem).join(" ")] });
-      parts.push({ kind: "ul", lines: lines.slice(firstItem).map((l) => l.replace(/^\s*([-*•]|\d+[.)])\s+/, "")) });
-      continue;
-    }
-    parts.push({ kind: "p", lines: [lines.join(" ")] });
-  }
-  return parts;
 }
 
 const TOKEN = /(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(`[^`]+`)|(\[\s*¶[^\]]{0,60}\])|(¶\s?\d+(?:\s?-\s?\d+)?)|(\[\d{1,2}(?:\s*,\s*\d{1,2})*\])/g;
@@ -161,13 +138,24 @@ function tokens(text: string, plain = false, sources?: Source[]): ReactNode[] {
 
 /** `plain` drops paragraph citations, for answers that live outside a reader. */
 function AnswerImpl({ text, streaming, plain = false, sources }: { text: string; streaming?: boolean; plain?: boolean; sources?: Source[] }) {
-  const parts = parseBlocks(undash(plain ? text.replace(/\s?\[\s*¶[^\]]{0,60}\]/g, "") : text));
+  const parts = parseAnswerBlocks(undash(plain ? text.replace(/\s?\[\s*¶[^\]]{0,60}\]/g, "") : text));
   const caret = streaming ? <span className="caret" aria-hidden /> : null;
   if (!parts.length) return streaming ? <p>{caret}</p> : null;
   return (
     <>
       {parts.map((p, i) => {
         const isLast = i === parts.length - 1;
+        if (p.kind === "heading") {
+          const Heading = p.level === 1 ? "h3" : p.level === 2 ? "h4" : "h5";
+          return <Heading key={i} className={`answer-heading answer-heading-${Math.min(p.level ?? 2, 3)}`}>{inline(p.lines[0], plain, sources)}{isLast && caret}</Heading>;
+        }
+        if (p.kind === "hr") return <hr key={i} className="answer-rule" />;
+        if (p.kind === "code") return <pre key={i} className="answer-code"><code>{p.lines.join("\n")}</code>{isLast && caret}</pre>;
+        if (p.kind === "quote") return <blockquote key={i} className="answer-quote">{inline(p.lines[0], plain, sources)}{isLast && caret}</blockquote>;
+        if (p.kind === "table") return <div key={i} className="answer-table" role="region" aria-label="Answer table" tabIndex={0}><table>
+          <thead><tr>{tableCells(p.lines[0]).map((cell, j) => <th key={j} scope="col">{inline(cell, plain, sources)}</th>)}</tr></thead>
+          <tbody>{p.lines.slice(1).map((line, j) => <tr key={j}>{tableCells(line).map((cell, k) => <td key={k}>{inline(cell, plain, sources)}</td>)}</tr>)}</tbody>
+        </table>{isLast && caret}</div>;
         if (p.kind === "p")
           return (
             <p key={i}>
@@ -177,7 +165,7 @@ function AnswerImpl({ text, streaming, plain = false, sources }: { text: string;
           );
         const L = p.kind === "ul" ? "ul" : "ol";
         return (
-          <L key={i}>
+          <L key={i} className="answer-list" {...(p.kind === "ol" ? { start: p.start } : {})}>
             {p.lines.map((l, j) => (
               <li key={j}>
                 {inline(l, plain, sources)}
