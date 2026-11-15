@@ -35,6 +35,13 @@ for(const [width,height] of (process.argv.includes('--keyboard-only') ? [] : [[7
  }
  await evaluate(`document.querySelector('button[aria-label="Appearance and answers"]').click()`);
  await until(`!!document.querySelector('[role="dialog"][aria-label="Appearance and answers"]')`);
+ await evaluate(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent==='Look').click()`);await sleep(100);
+ for (const pen of ['Vermilion', 'Cobalt', 'Moss', 'Graphite']) {
+  await evaluate(`document.querySelector('[aria-label="${pen} pen"]').click()`);
+  const look = await evaluate(`(()=>{const p=document.querySelector('[role="dialog"][aria-label="Appearance and answers"]');return {scroll:p.scrollWidth,client:p.clientWidth,painted:p.textContent.includes('Painted covers')}})()`);
+  assert.ok(look.scroll<=look.client, 'Look must not overflow horizontally: '+JSON.stringify({width,height,pen,look}));
+  assert.equal(look.painted,false);
+ }
  await evaluate(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent==='Answers').click()`);await sleep(200);
  const menu=await evaluate(`(()=>{const p=document.querySelector('[role="dialog"][aria-label="Appearance and answers"]'); const r=p.getBoundingClientRect();p.scrollTop=9999;return {left:r.left,right:r.right,bottom:r.bottom,top:r.top,scroll:p.scrollTop,overflow:p.scrollHeight>p.clientHeight}})()`);
  assert.ok(menu.left>=0&&menu.right<=width+1&&menu.bottom<=height&&menu.top>=0,JSON.stringify({width,height,menu}));

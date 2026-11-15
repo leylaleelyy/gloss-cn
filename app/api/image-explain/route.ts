@@ -1,3 +1,4 @@
+import { visionProvider } from "@/lib/vision-models";
 import { getProvider, aiHeaders } from "@/lib/provider";
 import { languageInstruction } from "@/lib/response-language";
 
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   if (!valid) return Response.json({error:"请使用 HTTPS 图片或书中内嵌的图片。"},{status:400});
   const text = (value: unknown, max: number) => typeof value === "string" ? value.slice(0,max) : "";
   try {
-    const provider = await getProvider();
+    const provider = visionProvider(await getProvider());
     if (!provider.baseUrl || !provider.model) return Response.json({error:"请先在 AI 设置中配置支持图片的模型。"},{status:401});
     const model = provider.visionModel || provider.model;
     const history = Array.isArray(body.history) ? body.history.slice(-8).filter((x: {role?: string;content?:unknown}) => x && ["user","assistant"].includes(x.role ?? "") && typeof x.content === "string").map((x: {role:string;content:string}) => ({role:x.role,content:x.content.slice(0,4000)})) : [];

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { VocabularyLink } from "@/components/ui/VocabularyLink";
 import { BookOpenText, Library } from "lucide-react";
 import { Account } from "@/components/account/Account";
 import { Lockup } from "@/components/brand/Gloss";
@@ -29,7 +30,7 @@ export function TopBar({ here, onLibrary }: { here?: "library" | "vocabulary"; o
           <Library size={17} />
           <span className="max-sm:hidden">Library</span>
         </Link>
-        <Link href="/vocabulary" aria-label="Vocabulary" aria-current={here === "vocabulary" ? "page" : undefined} className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-[14px] font-medium text-ink-2 transition-colors hover:bg-sunk hover:text-ink aria-[current=page]:bg-sunk aria-[current=page]:text-ink max-sm:w-9 max-sm:justify-center max-sm:px-0"><BookOpenText size={17} aria-hidden /><span className="max-sm:hidden">Vocabulary</span></Link>
+        <VocabularyLink aria-label="Vocabulary" aria-current={here === "vocabulary" ? "page" : undefined} className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-[14px] font-medium text-ink-2 transition-colors hover:bg-sunk hover:text-ink aria-[current=page]:bg-sunk aria-[current=page]:text-ink max-sm:w-9 max-sm:justify-center max-sm:px-0"><BookOpenText size={17} aria-hidden /><span className="max-sm:hidden">Vocabulary</span></VocabularyLink>
         <SettingsMenu compact />
         <KeyMenu />
         <Account />

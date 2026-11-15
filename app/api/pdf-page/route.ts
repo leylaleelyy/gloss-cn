@@ -1,3 +1,4 @@
+import { visionProvider } from "@/lib/vision-models";
 import { providerConfigured } from "@/lib/provider";
 import { needKey } from "@/lib/quota";
 import { getProvider, aiHeaders } from "@/lib/provider";
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
   if (!(await providerConfigured())) return needKey(null);
 
   const layout = body.mode === "layout";
-  const provider = await getProvider();
+  const provider = visionProvider(await getProvider());
   const model = provider.visionModel || provider.model;
 
   let res: Response;

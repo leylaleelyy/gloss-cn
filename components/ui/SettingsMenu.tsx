@@ -10,7 +10,6 @@ import { MODELS, type ModelKey } from "@/lib/models";
 import { BOOK_KEYS, bookSettingsSnapshot, readingBook, saveBookSettings, applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
 import { Popover, barBtn } from "./Popover";
-import { setLibraryPrefs, useLibraryPrefs } from "@/lib/library-prefs";
 
 function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { key: T; label: ReactNode }[]; onChange: (v: T) => void; label: string }) {
   return (
@@ -90,31 +89,6 @@ function Swatch({ theme, on }: { theme: (typeof THEMES)[number]; on: boolean }) 
         </span>
       )}
     </span>
-  );
-}
-
-/** The library's one setting: a painted cover for every text. Off by default, since each one is an image model call. */
-function PaintedCovers() {
-  const { paintedCovers } = useLibraryPrefs();
-  return (
-    <div className="flex items-center justify-between gap-3 border-t border-rule pt-3.5">
-      <div className="min-w-0">
-        <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink-2">
-          <Paintbrush size={13} /> Painted covers
-        </p>
-        <p className="mt-0.5 text-[11.5px] leading-snug text-ink-3">A picture for each text in your library, about 2¢ each.</p>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={paintedCovers}
-        aria-label="Painted covers"
-        onClick={() => setLibraryPrefs({ paintedCovers: !paintedCovers })}
-        className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors ${paintedCovers ? "bg-[var(--rubric)]" : "bg-rule-strong"}`}
-      >
-        <span className={`absolute left-[3px] top-[3px] size-4 rounded-full bg-raised shadow transition-transform duration-200 ${paintedCovers ? "translate-x-4" : ""}`} />
-      </button>
-    </div>
   );
 }
 
@@ -205,7 +179,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
       {() => (
         <div>
           {!compact && (
-            <div className="mb-4">
+            <div className="mb-3 max-w-[252px]">
               <Seg
                 label="Settings section"
                 value={tab}
@@ -241,7 +215,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               </div>
 
               <Row label="Pen">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
                   {PENS.map((p) => (
                     <button
                       key={p.key}
@@ -250,19 +224,19 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                       aria-pressed={settings.pen === p.key}
                       aria-label={`${p.label} pen`}
                       data-tip={p.label}
-                      className={`grid size-7 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.pen === p.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
+                      className={`grid size-6 shrink-0 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.pen === p.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
                     >
-                      <span className="size-5 rounded-full" style={{ background: dark ? p.dark : p.light }} />
+                      <span className="size-4 rounded-full" style={{ background: dark ? p.dark : p.light }} />
                     </button>
                   ))}
-                  <span className="ml-1 text-[12px] text-ink-3">{PENS.find((p) => p.key === settings.pen)?.label}</span>
+                  <span className="w-full text-[11px] leading-tight text-ink-3">{PENS.find((p) => p.key === settings.pen)?.label}</span>
                 </div>
               </Row>
 
               {!compact && (
                 <>
                   <Row label="Highlighter">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
                       {MARKERS.map((m) => (
                         <button
                           key={m.key}
@@ -271,12 +245,12 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                           aria-pressed={settings.marker === m.key}
                           aria-label={`${m.label} highlighter`}
                           data-tip={m.label}
-                          className={`grid size-7 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.marker === m.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
+                          className={`grid size-6 shrink-0 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.marker === m.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
                         >
-                          <span className="h-3 w-5 -rotate-12 rounded-[3px] opacity-80" style={{ background: m.color }} />
+                          <span className="h-2.5 w-4 -rotate-12 rounded-[3px] opacity-80" style={{ background: m.color }} />
                         </button>
                       ))}
-                      <span className="ml-1 text-[12px] text-ink-3">{MARKERS.find((m) => m.key === settings.marker)?.label}</span>
+                      <span className="w-full text-[11px] leading-tight text-ink-3">{MARKERS.find((m) => m.key === settings.marker)?.label}</span>
                     </div>
                   </Row>
                   <div className="grid grid-cols-2 gap-1.5 border-t border-rule pt-3.5">
@@ -287,7 +261,6 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   </div>
                 </>
               )}
-              <PaintedCovers />
             </div>
           )}
 

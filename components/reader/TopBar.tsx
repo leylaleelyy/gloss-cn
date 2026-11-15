@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { VocabularyLink } from "@/components/ui/VocabularyLink";
 import { WordWiseControl } from "./WordWise";
 import { Contents } from "./Contents";
 import { useEffect, useRef, useState } from "react";
@@ -137,7 +138,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
             </button>
           </span>
           <ListenButton from={listenFrom} />
-          <Link href="/vocabulary" className={barBtn} data-tip="Vocabulary" aria-label="Vocabulary"><BookOpenText size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Vocabulary</span></Link>
+          <VocabularyLink className={barBtn} data-tip="Vocabulary" aria-label="Vocabulary"><BookOpenText size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Vocabulary</span></VocabularyLink>
           <SettingsMenu />
           <KeyMenu />
           <button

@@ -3,12 +3,14 @@ export type ProviderConfig = {
   apiKey: string;
   model: string;
   visionModel: string;
+  visionBaseUrl: string;
+  visionApiKey: string;
   speechModel: string;
   speechVoice: string;
   imageModel: string;
 };
 
-export const EMPTY_PROVIDER: ProviderConfig = { baseUrl: "", apiKey: "", model: "", visionModel: "", speechModel: "", speechVoice: "", imageModel: "" };
+export const EMPTY_PROVIDER: ProviderConfig = { baseUrl: "", apiKey: "", model: "", visionModel: "", visionBaseUrl: "", visionApiKey: "", speechModel: "", speechVoice: "", imageModel: "" };
 export const PROVIDER_STORAGE = "gloss:ai-provider";
 
 export function normalizeProvider(value: unknown): ProviderConfig {
@@ -24,6 +26,12 @@ export function normalizeProvider(value: unknown): ProviderConfig {
   const url = new URL(config.baseUrl);
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error("Use an HTTP(S) API base URL without credentials, query parameters, or fragments.");
   config.baseUrl = url.href.replace(/\/+$/, "");
+  if (config.visionBaseUrl) {
+    const visionUrl = new URL(config.visionBaseUrl);
+    if (!["http:", "https:"].includes(visionUrl.protocol) || visionUrl.username || visionUrl.password || visionUrl.search || visionUrl.hash) throw new Error("Use a valid vision API base URL.");
+    config.visionBaseUrl = visionUrl.href.replace(/\/+$/, "");
+    if (!config.visionModel) throw new Error("Choose a vision model for the separate vision provider.");
+  }
   return config;
 }
 

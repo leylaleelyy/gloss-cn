@@ -20,7 +20,7 @@ type Props = {
   active: boolean;
   hover: boolean;
   entering: boolean;
-  /** In a crowded stretch of margin, secondary notes show just their question; learning notes retain their summary. */
+  /** In a crowded stretch of margin, single-turn notes show just their question; learning and multi-turn notes retain summaries. */
   mini?: boolean;
   /** "margin" cards are absolutely placed; "sheet" and "list" flow normally. */
   variant: "margin" | "sheet" | "list";
@@ -196,7 +196,15 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
           definitionLines.length ? <div className="dictionary-preview mt-1">
             {definitionLines.map((line, i) => <p key={i} className={`line-clamp-3 text-[13.5px] leading-[1.5] ${i ? 'mt-1 text-ink-3' : 'text-ink'}`}>{line}</p>)}
           </div> : <Gist t={first} />
-        ) : (!mini || gloss.action === "explain" || gloss.action === "simplify") && <Gist t={first} prominent={gloss.action === "explain" || gloss.action === "simplify"} />}
+        ) : (follow > 0 || !mini || gloss.action === "explain" || gloss.action === "simplify") && <Gist t={first} prominent={gloss.action === "explain" || gloss.action === "simplify"} />}
+        {gloss.turns.slice(1).map((turn, index) => {
+          if (turn.role !== "user") return null;
+          const answer = gloss.turns[index + 2];
+          return <div key={index} className="follow-up-summary mt-2 border-t border-rule pt-2">
+            <p className="line-clamp-2 text-[12.5px] font-medium leading-[1.45] text-ink-2">{turn.content}</p>
+            {answer?.role === "assistant" ? <Gist t={answer} /> : <p className="mt-1 text-[12px] text-ink-3">等待回答…</p>}
+          </div>;
+        })}
       </article>
     );
   }
@@ -225,7 +233,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
             className="cite !text-[11px]"
             onClick={(e) => {
               e.stopPropagation();
-              if (blockId) jumpToBlock(blockId);
+              if (blockId) jumpToBlock(blockId, { remember: true });
             }}
             aria-label={`Go to paragraph ${n}`}
             data-tip="Show in the text"

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, X } from "lucide-react";
+import { flushSync } from "react-dom";
+import { ArrowUpRight, Undo2, X } from "lucide-react";
 import { blockEl, selectBlock, spanIn } from "@/lib/anchor";
 import { displayArticle, isHeading, readingMinutes, titleClass, type Article } from "@/lib/article";
 import { ARTICLE_QUESTIONS } from "@/lib/actions";
@@ -119,6 +120,9 @@ function ReaderInner({ article }: { article: Article }) {
   const articleId = article.id;
   const [articleEl, setArticleEl] = useState<HTMLDivElement | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
+  const [readingReturn, setReadingReturn] = useState<{
+    blockId?: string; offset: number; scrollY: number; gloss: string | null;
+  } | null>(null);
   const [peek, setPeekState] = useState<{ n: number; rect: DOMRect } | null>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
@@ -153,9 +157,22 @@ function ReaderInner({ article }: { article: Article }) {
 
   /* ---------------- navigation ---------------- */
 
-  const jumpToBlock = useCallback((blockId: string, opts?: { flash?: boolean }) => {
+  const jumpToBlock = useCallback((blockId: string, opts?: { flash?: boolean; remember?: boolean }) => {
     const el = blockEl(blockId);
     if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const away = (rect.bottom < 80 || rect.top > window.innerHeight - 80) && Math.abs(rect.top - window.innerHeight * 0.28) > window.innerHeight * 0.8;
+    if (opts?.remember && away) {
+      const origin = Array.from(document.querySelectorAll<HTMLElement>(".prose-read [data-block]")).find(block => block.getBoundingClientRect().bottom > 100);
+      const point = { blockId: origin?.dataset.block, offset: origin?.getBoundingClientRect().top ?? 0, scrollY: window.scrollY, gloss: useStore.getState().activeGloss };
+      // Keep the original reading position across a chain of citation jumps.
+      // Close overlays before measuring the destination, including the touch sheet.
+      flushSync(() => {
+        setReadingReturn(previous => previous ?? point);
+        setUI({ activeGloss: null, notebookOpen: false });
+        setPeekState(null);
+      });
+    }
     const top = el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.28;
     const far = Math.abs(top - window.scrollY) > window.innerHeight * 3;
     window.scrollTo({ top: Math.max(0, top), behavior: far ? "instant" : readingScrollBehavior() });
@@ -165,7 +182,21 @@ function ReaderInner({ article }: { article: Article }) {
       el.classList.add("is-flash");
       setTimeout(() => el.classList.remove("is-flash"), 1900);
     }
-  }, []);
+  }, [setUI]);
+
+  const continueReading = () => {
+    if (!readingReturn) return;
+    const point = readingReturn;
+    flushSync(() => {
+      setReadingReturn(null);
+      setUI({ activeGloss: point.gloss && useStore.getState().glosses[articleId]?.some(g => g.id === point.gloss) ? point.gloss : null, notebookOpen: false });
+    });
+    const origin = point.blockId ? blockEl(point.blockId) : null;
+    const top = origin ? origin.getBoundingClientRect().top + window.scrollY - point.offset : point.scrollY;
+    window.scrollTo({ top: Math.max(0, top), behavior: "instant" });
+    const target = point.gloss ? Array.from(document.querySelectorAll<HTMLElement>("[data-gloss]")).find(el => el.dataset.gloss === point.gloss) : origin;
+    if (target) { target.tabIndex = -1; target.focus({ preventScroll: true }); }
+  };
 
   const api = useMemo<ReaderApi>(
     () => ({
@@ -402,7 +433,7 @@ function ReaderInner({ article }: { article: Article }) {
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest(".gloss, [data-g], .lens, .pop, header, aside, [role=dialog], .cite, .sheet")) return;
+      if (t.closest(".gloss, [data-g], .lens, .pop, header, aside, [role=dialog], .cite, .sheet, .reading-return")) return;
       if (useStore.getState().activeGloss) setUI({ activeGloss: null });
     };
     document.addEventListener("pointerdown", onDown);
@@ -630,6 +661,13 @@ function ReaderInner({ article }: { article: Article }) {
         <Peek peek={peek} />
         <Shortcuts />
         {!wide && <GlossSheet />}
+
+        {readingReturn && <div className="reading-return fixed bottom-[calc(env(safe-area-inset-bottom)+88px)] left-1/2 z-[70] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-1 rounded-full border border-rule bg-raised p-1 shadow-pop" aria-label="Reading return">
+          <button type="button" onClick={continueReading} className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-medium text-ink hover:bg-sunk">
+            <Undo2 size={16} aria-hidden />返回继续阅读
+          </button>
+          <button type="button" aria-label="Dismiss reading return" onClick={() => setReadingReturn(null)} className="grid size-10 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-sunk"><X size={15} aria-hidden /></button>
+        </div>}
 
         {toast?.kind === "resume" && (
           <Toast onClose={() => setToast(null)}>

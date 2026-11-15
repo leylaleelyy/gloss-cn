@@ -8,6 +8,7 @@ export async function getProvider(): Promise<ProviderConfig> {
   return normalizeProvider({
     baseUrl: process.env.AI_BASE_URL, apiKey: process.env.AI_API_KEY,
     model: process.env.AI_MODEL, visionModel: process.env.AI_VISION_MODEL,
+    visionBaseUrl: process.env.AI_VISION_BASE_URL, visionApiKey: process.env.AI_VISION_API_KEY,
     speechModel: process.env.AI_SPEECH_MODEL, speechVoice: process.env.AI_SPEECH_VOICE,
     imageModel: process.env.AI_IMAGE_MODEL,
   });

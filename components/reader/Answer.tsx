@@ -89,7 +89,7 @@ function Cite({ n, label }: { n: number; label: string }) {
       onClick={(e) => {
         e.stopPropagation();
         peek(null);
-        jumpTo(n);
+        jumpTo(n, { remember: true });
       }}
       onMouseEnter={(e) => exists && peek(n, e.currentTarget.getBoundingClientRect())}
       onMouseLeave={() => peek(null)}

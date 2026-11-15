@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { VisionSettings } from "./VisionSettings";
 import { KeyRound } from "lucide-react";
 import { EMPTY_PROVIDER, PROVIDER_STORAGE, normalizeProvider, readProvider, type ProviderConfig } from "@/lib/provider-config";
 import { Popover, barBtn } from "./Popover";
@@ -31,6 +32,8 @@ export function KeyMenu() {
 }
 
 function ProviderPanel({ current, appModel, onSave, close }: { appModel: string | null; current: ProviderConfig; onSave: (config: ProviderConfig) => void; close: () => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const validFields = () => Array.from(panelRef.current?.querySelectorAll<HTMLInputElement>("input[required]") ?? []).every(input => input.reportValidity());
   const [draft, setDraft] = useState<ProviderConfig>(() => initialDraft(current));
   const [selected, setSelected] = useState(() => presetFor(current));
   const choose = (id: string) => {
@@ -51,6 +54,7 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
     </label>
   );
   const save = () => {
+    if (!validFields()) return;
     try {
       if (selected !== "custom" && !draft.apiKey.trim()) throw new Error("Enter your API key / 请填写 API 密钥。");
       const config = normalizeProvider(draft);
@@ -60,6 +64,7 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save AI settings."); }
   };
   const test = async () => {
+    if (!validFields()) return;
     setChecking(true); setMessage("");
     try {
       if (selected !== "custom" && !draft.apiKey.trim()) throw new Error("Enter your API key / 请填写 API 密钥。");
@@ -71,7 +76,7 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
     finally { setChecking(false); }
   };
   return (
-    <div className="max-h-[75vh] overflow-y-auto">
+    <div ref={panelRef} className="max-h-[75vh] overflow-y-auto">
       <p className="text-[14px] font-medium text-ink">AI provider</p>
       <p className="mt-1 text-[12px] text-ink-3">Choose a provider and enter your API key. 选择服务商，填写密钥即可。</p>
       {appModel && <p className="mt-2 text-[12px] text-ink-2">{current.baseUrl ? "App default available" : "Connected using app default"}: {appModel}. Clear device settings to use it.</p>}
@@ -91,7 +96,7 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
       <details className="mt-3 text-[12px] text-ink-2">
         <summary className="cursor-pointer">Advanced settings / 高级设置</summary>
         {selected !== "custom" && field("model", "Chat model", "Exact model ID")}
-        {field("visionModel", "Vision model", "Uses chat model if blank")}
+        <VisionSettings key={selected} value={draft} onChange={config => { setDraft(config); setMessage(""); }} />
         {field("speechModel", "Speech model", "Required for read aloud")}
         {field("speechVoice", "Speech voice", "Required for read aloud")}
         {field("imageModel", "Image model", "Required for painted covers")}
@@ -100,7 +105,7 @@ function ProviderPanel({ current, appModel, onSave, close }: { appModel: string 
       {message && <p role="status" className="mt-2 text-[12px] text-ink-2">{message}</p>}
       <div className="mt-3 flex justify-between gap-2">
         <button type="button" className="text-[12px] text-ink-3" onClick={() => { localStorage.removeItem(PROVIDER_STORAGE); setDraft(initialDraft(EMPTY_PROVIDER)); setSelected("deepseek"); onSave({ ...EMPTY_PROVIDER }); window.dispatchEvent(new Event("gloss:provider")); setMessage("Device settings cleared."); }}>Clear</button>
-        <button type="button" disabled={checking} className="text-[12px] text-ink-2" onClick={test}>{checking ? "Testing…" : "Test connection"}</button>
+        <button type="button" disabled={checking} className="text-[12px] text-ink-2" onClick={test}>{checking ? "Testing…" : "Test chat connection"}</button>
         <button type="button" onClick={save} className="rounded-lg bg-ink px-4 py-2 text-[12px] text-bg">Save</button>
       </div>
     </div>

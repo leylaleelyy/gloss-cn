@@ -210,7 +210,7 @@ function GlossEntry({ g }: { g: Gloss }) {
   const label = !g.anchor ? "Whole text" : g.action === "ask" ? undefined : ACTIONS[g.action].label;
   const go = () => {
     setUI({ activeGloss: g.id, ...(covers() ? { notebookOpen: false } : {}) });
-    if (blockId) jumpToBlock(blockId);
+    if (blockId) jumpToBlock(blockId, { remember: true });
   };
 
   return (
@@ -303,7 +303,7 @@ function HighlightEntry({ h }: { h: Highlight }) {
         type="button"
         onClick={() => {
           if (covers()) setUI({ notebookOpen: false });
-          jumpToBlock(h.anchor.start.b);
+          jumpToBlock(h.anchor.start.b, { remember: true });
         }}
         className="block w-full pr-7 text-left"
       >
