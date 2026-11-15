@@ -36,6 +36,14 @@ for(const [width,height] of (process.argv.includes('--keyboard-only') ? [] : [[7
  await evaluate(`document.querySelector('button[aria-label="Appearance and answers"]').click()`);
  await until(`!!document.querySelector('[role="dialog"][aria-label="Appearance and answers"]')`);
  await evaluate(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent==='Look').click()`);await sleep(100);
+ const density = await evaluate(`(()=>{const p=document.querySelector('[role="dialog"][aria-label="Appearance and answers"]'), tabs=p.querySelector('[aria-label="Settings section"]'), r=p.getBoundingClientRect(), t=tabs.getBoundingClientRect(), style=getComputedStyle(p);return {inner:p.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),tabs:tabs.offsetWidth,tabHeight:tabs.querySelector('button').offsetHeight,switchHeight:p.querySelector('[role="switch"]').offsetHeight}})()`);
+ assert.ok(Math.abs(density.inner-density.tabs)<1,'Tabs must fill the panel: '+JSON.stringify(density));
+ assert.ok(density.tabHeight<=26 && density.switchHeight<=28,'Compact control sizes: '+JSON.stringify(density));
+ if(width===744) {
+  const shot=await send('Page.captureScreenshot',{format:'png'});
+  await writeFile(join(profile,'appearance-look.png'),Buffer.from(shot.data,'base64'));
+  console.log('Appearance screenshot:',join(profile,'appearance-look.png'));
+ }
  for (const pen of ['Vermilion', 'Cobalt', 'Moss', 'Graphite']) {
   await evaluate(`document.querySelector('[aria-label="${pen} pen"]').click()`);
   const look = await evaluate(`(()=>{const p=document.querySelector('[role="dialog"][aria-label="Appearance and answers"]');return {scroll:p.scrollWidth,client:p.clientWidth,painted:p.textContent.includes('Painted covers')}})()`);

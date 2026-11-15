@@ -2140,6 +2140,8 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .reader-tools button, .reader-tools > a { min-height: 44px; min-width: 44px; }
   .reader-tools a span { display: none; }
   .text-size-controls button { min-height: 44px; min-width: 44px; }
+  /* Popover controls use their own compact sizes, not the toolbar hit areas. */
+  .reader-tools .appearance-settings button { min-height: 0; min-width: 0; }
   .text-size-controls input { height: 32px; }
   .pop[role="dialog"] { max-height: calc(100dvh - 88px); overflow-y: auto; overscroll-behavior: contain; }
 }

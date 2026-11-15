@@ -6,14 +6,13 @@ import { flushSync } from "react-dom";
 import { AlignJustify, AlignLeft, Focus, Headphones, Map as MapIcon, Minus, Paintbrush, Pilcrow, Plus, RotateCcw } from "lucide-react";
 import { LearningPreferences } from "@/components/reader/LearningPreferences";
 import { RESPONSE_LANGUAGES, responseLanguage } from "@/lib/response-language";
-import { MODELS, type ModelKey } from "@/lib/models";
 import { BOOK_KEYS, bookSettingsSnapshot, readingBook, saveBookSettings, applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
 import { Popover, barBtn } from "./Popover";
 
 function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { key: T; label: ReactNode }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="grid rounded-[10px] bg-sunk p-[3px]" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+    <div role="radiogroup" aria-label={label} className="grid w-full min-w-0 rounded-lg bg-sunk p-0.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
       {options.map((o) => (
         <button
           key={o.key}
@@ -21,7 +20,7 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
           role="radio"
           aria-checked={value === o.key}
           onClick={() => onChange(o.key)}
-          className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-[8px] text-[12.5px] font-medium transition-colors ${value === o.key ? "bg-pill text-ink shadow-[0_1px_2px_rgb(0_0_0/0.1)]" : "text-ink-3 hover:text-ink"}`}
+          className={`inline-flex h-6 min-w-0 items-center justify-center gap-1 rounded-md text-[12px] font-medium transition-colors ${value === o.key ? "bg-pill text-ink shadow-[0_1px_2px_rgb(0_0_0/0.1)]" : "text-ink-3 hover:text-ink"}`}
         >
           {/* Optically centred: the pill's shadow weighs its bottom edge, so the label sits a pixel lower. */}
           <span className="inline-flex translate-y-px items-center gap-1.5">{o.label}</span>
@@ -33,7 +32,7 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-3">
+    <div className="grid grid-cols-[68px_minmax(0,1fr)] items-center gap-2">
       <span className="text-[12.5px] text-ink-3">{label}</span>
       {children}
     </div>
@@ -47,7 +46,7 @@ function Chip({ on, onChange, label, icon }: { on: boolean; onChange: (v: boolea
       role="switch"
       aria-checked={on}
       onClick={() => onChange(!on)}
-      className={`flex h-9 items-center justify-center gap-1.5 rounded-[10px] border text-[12.5px] font-medium transition-colors ${
+      className={`flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border text-[11px] font-medium transition-colors ${
         on ? "border-transparent bg-rubric-wash text-rubric-text" : "border-rule text-ink-3 hover:border-rule-strong hover:text-ink"
       }`}
     >
@@ -60,10 +59,10 @@ function Chip({ on, onChange, label, icon }: { on: boolean; onChange: (v: boolea
 /** A tiny page in each theme: its paper, its ink, and the pen's underline. */
 function Swatch({ theme, on }: { theme: (typeof THEMES)[number]; on: boolean }) {
   const pen = (dark: boolean) => (dark ? "var(--pen-d)" : "var(--pen-l)");
-  const face = "font-serif text-[15px] leading-none [font-variation-settings:'opsz'_36]";
+  const face = "font-serif text-[13px] leading-none [font-variation-settings:'opsz'_36]";
   return (
     <span
-      className={`relative flex h-[38px] w-full overflow-hidden rounded-[10px] shadow-[inset_0_0_0_1px_rgb(128_128_128/0.28)] outline-offset-2 transition-[outline-color] ${
+      className={`relative flex h-[28px] w-full overflow-hidden rounded-md shadow-[inset_0_0_0_1px_rgb(128_128_128/0.28)] outline-offset-2 transition-[outline-color] ${
         on ? "outline-2 outline-[var(--ink)] [outline-style:solid]" : "outline-2 outline-transparent [outline-style:solid] group-hover:outline-[var(--rule-strong)]"
       }`}
     >
@@ -175,11 +174,11 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <Popover label="Appearance and answers" tip="Appearance" width={compact ? 316 : 348} triggerClass={barBtn} trigger={<><Paintbrush size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Appearance</span></>}>
+    <Popover label="Appearance and answers" tip="Appearance" width={compact ? 308 : 332} triggerClass={barBtn} trigger={<><Paintbrush size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Appearance</span></>}>
       {() => (
-        <div>
+        <div className="appearance-settings">
           {!compact && (
-            <div className="mb-3 max-w-[252px]">
+            <div className="mb-3 w-full">
               <Seg
                 label="Settings section"
                 value={tab}
@@ -194,10 +193,10 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           )}
 
           {(compact || tab === "look") && (
-            <div className="space-y-3.5">
+            <div className="space-y-3">
               <div>
-                <p className="mb-2.5 text-[12.5px] text-ink-3">Theme</p>
-                <div className="grid grid-cols-6 gap-2">
+                <p className="mb-2 text-[12px] text-ink-3">Theme</p>
+                <div className="grid grid-cols-6 gap-1.5">
                   {THEMES.map((t) => (
                     <button
                       key={t.key}
@@ -205,7 +204,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                       onClick={(e) => pickTheme(t.key, e)}
                       aria-pressed={settings.theme === t.key}
                       data-tip={t.key === "auto" ? "Follows your system" : undefined}
-                      className="group flex flex-col items-center gap-1.5 rounded-[12px] focus-visible:outline-offset-4"
+                      className="group flex min-w-0 flex-col items-center gap-1.5 rounded-md focus-visible:outline-offset-4"
                     >
                       <Swatch theme={t} on={settings.theme === t.key} />
                       <span className={`text-[11px] leading-none transition-colors ${settings.theme === t.key ? "font-medium text-ink" : "text-ink-3 group-hover:text-ink-2"}`}>{t.label}</span>
@@ -215,7 +214,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
               </div>
 
               <Row label="Pen">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+                <div className="flex min-w-0 items-center gap-1.5">
                   {PENS.map((p) => (
                     <button
                       key={p.key}
@@ -226,17 +225,17 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                       data-tip={p.label}
                       className={`grid size-6 shrink-0 place-items-center rounded-full transition-[box-shadow,transform] active:scale-90 ${settings.pen === p.key ? "shadow-[0_0_0_2px_var(--bg-raised),0_0_0_3.5px_var(--ink-3)]" : ""}`}
                     >
-                      <span className="size-4 rounded-full" style={{ background: dark ? p.dark : p.light }} />
+                      <span className="size-3.5 rounded-full" style={{ background: dark ? p.dark : p.light }} />
                     </button>
                   ))}
-                  <span className="w-full text-[11px] leading-tight text-ink-3">{PENS.find((p) => p.key === settings.pen)?.label}</span>
+                  <span className="ml-1 min-w-0 flex-1 truncate text-[11px] leading-tight text-ink-3">{PENS.find((p) => p.key === settings.pen)?.label}</span>
                 </div>
               </Row>
 
               {!compact && (
                 <>
                   <Row label="Highlighter">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       {MARKERS.map((m) => (
                         <button
                           key={m.key}
@@ -250,14 +249,14 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                           <span className="h-2.5 w-4 -rotate-12 rounded-[3px] opacity-80" style={{ background: m.color }} />
                         </button>
                       ))}
-                      <span className="w-full text-[11px] leading-tight text-ink-3">{MARKERS.find((m) => m.key === settings.marker)?.label}</span>
+                      <span className="ml-1 min-w-0 flex-1 truncate text-[11px] leading-tight text-ink-3">{MARKERS.find((m) => m.key === settings.marker)?.label}</span>
                     </div>
                   </Row>
-                  <div className="grid grid-cols-2 gap-1.5 border-t border-rule pt-3.5">
-                    <Chip label="Numbers" icon={<Pilcrow size={14} />} on={settings.numbers} onChange={(v) => set({ numbers: v })} />
-                    <Chip label="Map" icon={<MapIcon size={14} />} on={settings.rail} onChange={(v) => set({ rail: v })} />
-                    <Chip label="Focus" icon={<Focus size={14} />} on={focusMode} onChange={(v) => setUI({ focusMode: v })} />
-                    <Chip label="Listen" icon={<Headphones size={14} />} on={settings.listen} onChange={(v) => set({ listen: v })} />
+                  <div className="grid grid-cols-4 gap-1 border-t border-rule pt-3">
+                    <Chip label="Numbers" icon={<Pilcrow size={12} />} on={settings.numbers} onChange={(v) => set({ numbers: v })} />
+                    <Chip label="Map" icon={<MapIcon size={12} />} on={settings.rail} onChange={(v) => set({ rail: v })} />
+                    <Chip label="Focus" icon={<Focus size={12} />} on={focusMode} onChange={(v) => setUI({ focusMode: v })} />
+                    <Chip label="Listen" icon={<Headphones size={12} />} on={settings.listen} onChange={(v) => set({ listen: v })} />
                   </div>
                 </>
               )}
@@ -265,22 +264,22 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           )}
 
           {!compact && tab === "text" && (
-            <div className="space-y-3.5">
+            <div className="space-y-3">
               <div>
-                <p className="mb-2.5 text-[12.5px] text-ink-3">Typeface{bookId ? " · 本书独立记忆" : " · 默认字体"}</p>
+                <p className="mb-2 text-[12px] text-ink-3">Typeface{bookId ? " · 本书独立记忆" : " · 默认字体"}</p>
                 {fontError && <p role="alert" className="text-[12px] text-ink-2">{fontError}</p>}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   {FACES.map((f) => (
                     <button
                       key={f.key}
                       type="button"
                       onClick={() => set({ face: f.key })}
                       aria-pressed={settings.face === f.key}
-                      className={`group flex h-[62px] flex-col items-center justify-center gap-1 rounded-[12px] border transition-[border-color,background-color,transform] active:scale-[0.97] ${
+                      className={`group flex h-[46px] min-w-0 flex-col items-center justify-center gap-1 rounded-lg border transition-[border-color,background-color,transform] active:scale-[0.97] ${
                         settings.face === f.key ? "border-ink bg-bg" : "border-rule hover:border-rule-strong"
                       }`}
                     >
-                      <span className="text-[22px] leading-none text-ink" style={{ fontFamily: ["dyslexie", "huiwen", "arphic"].includes(f.key) && settings.face !== f.key ? undefined : f.css }}>
+                      <span className="text-[18px] leading-none text-ink" style={{ fontFamily: ["dyslexie", "huiwen", "arphic"].includes(f.key) && settings.face !== f.key ? undefined : f.css }}>
                         {f.key === "huiwen" || f.key === "arphic" ? "书卷" : "Ag"}
                       </span>
                       <span className={`text-[11px] leading-none ${settings.face === f.key ? "font-medium text-ink" : "text-ink-3"}`}>{f.label}</span>
@@ -379,7 +378,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-[12.5px] text-ink-3" htmlFor="response-language">Response language · 回答语言</label>
-                <select id="response-language" value={responseLanguage(settings.responseLanguage)} onChange={(e) => set({ responseLanguage: responseLanguage(e.target.value) })} className="mb-2 h-9 w-full rounded-[10px] border border-rule bg-sunk px-2 text-[13px] text-ink">
+                <select id="response-language" value={responseLanguage(settings.responseLanguage)} onChange={(e) => set({ responseLanguage: responseLanguage(e.target.value) })} className="mb-2 h-8 w-full rounded-lg border border-rule bg-sunk px-2 text-[13px] text-ink">
                   {RESPONSE_LANGUAGES.map((language) => <option key={language.key} value={language.key}>{language.label}</option>)}
                 </select>
                 <p className="mb-4 text-[12px] leading-snug text-ink-4">Applies to new answers, learning cards and summaries. Existing notes keep their language.</p>
