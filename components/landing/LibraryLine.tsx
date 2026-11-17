@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ReadLink } from "./ReadLink";
 import { useMemo } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { tidyTitle } from "@/lib/article";
@@ -68,11 +69,11 @@ export function LibraryLine({ saved }: { saved: Saved | null }) {
       <p className="lib-line">
         <span>No link handy? Try</span>
         {samples.map((a) => (
-          <Link key={a.id} href={`/read/${a.id}`} className="lib-sample" data-tip={a.title} data-tip-hint={`${a.author}, ${a.published}`}>
+          <ReadLink key={a.id} href={`/read/${a.id}`} className="lib-sample" data-tip={a.title} data-tip-hint={`${a.author}, ${a.published}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={SAMPLE_SHELF[a.id]?.cover} alt="" draggable={false} />
             {a.author?.split(" ").slice(-1)[0]}
-          </Link>
+          </ReadLink>
         ))}
       </p>
     );
@@ -81,13 +82,13 @@ export function LibraryLine({ saved }: { saved: Saved | null }) {
   return (
     <p className="lib-line">
       {reading ? (
-        <Link href={`/read/${reading.id}`} className="lib-line-note group transition-colors hover:text-ink">
+        <ReadLink href={`/read/${reading.id}`} className="lib-line-note group transition-colors hover:text-ink">
           <Ring pct={reading.pct} />
           <span className="min-w-0 truncate">
             Continue <span className="text-ink">{reading.title}</span>
           </span>
           <span className="shrink-0 tabular-nums text-ink-4">{Math.round(reading.pct * 100)}%</span>
-        </Link>
+        </ReadLink>
       ) : (
         <span className="lib-line-note">
           {library.length} {library.length === 1 ? "text" : "texts"} on your shelves

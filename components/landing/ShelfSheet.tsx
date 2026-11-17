@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ReadLink } from "./ReadLink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Download, PencilLine, Search, X } from "lucide-react";
@@ -285,11 +286,11 @@ export function ShelfSheet({
                   />
                 ) : (
                 <>
-                <Link
+                <ReadLink
                   href={`/read/${it.id}`}
                   data-row
                   onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey) return;
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
                     e.preventDefault();
                     onOpenChange(false);
                     onOpen(it.id);
@@ -316,7 +317,7 @@ export function ShelfSheet({
                       )}
                     </span>
                   </span>
-                </Link>
+                </ReadLink>
                 {!it.sample && (
                   <button
                     type="button"
@@ -399,10 +400,10 @@ function HighlightRow({ h, i, title, onOpen }: { h: Highlight; i: number; title:
   return (
     <li className="shelf-row" style={{ animationDelay: `${Math.min(i, 14) * 18}ms` }}>
       <a
-        href={`/read/${h.articleId}`}
+        href={`/read/${h.articleId}?hl=${h.id}`}
         data-row
         onClick={(e) => {
-          if (e.metaKey || e.ctrlKey) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
           e.preventDefault();
           onOpen();
         }}

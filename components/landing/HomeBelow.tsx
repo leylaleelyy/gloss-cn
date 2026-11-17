@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { ReadLink } from "./ReadLink";
 import { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 import { SignInButton } from "@/components/account/Auth";
@@ -86,7 +86,7 @@ export function HomeBelow({ signedIn }: { signedIn: boolean }) {
       <ol className="desk-tiles">
         {all.slice(0, RECENT).map((h, i) => (
           <li key={h.id} style={{ ["--i" as string]: i }}>
-            <Link href={`/read/${h.articleId}?hl=${h.id}`} className="desk-tile is-quote">
+            <ReadLink href={`/read/${h.articleId}?hl=${h.id}`} className="desk-tile is-quote">
               <p className="line-clamp-3 font-serif text-[15.5px] leading-[1.5] text-ink [font-variation-settings:'opsz'_20]">
                 <span className="m-hl" data-c={h.color && h.color !== "yellow" ? h.color : undefined}>
                   {h.anchor.quote.trim()}
@@ -96,7 +96,7 @@ export function HomeBelow({ signedIn }: { signedIn: boolean }) {
                 <span className="truncate">{tidyTitle(titleOf.get(h.articleId)!)}</span>
                 <ArrowRight size={13} className="desk-source-go" aria-hidden />
               </p>
-            </Link>
+            </ReadLink>
           </li>
         ))}
         {/* Fewer than three: the room left keeps the row's shape. */}

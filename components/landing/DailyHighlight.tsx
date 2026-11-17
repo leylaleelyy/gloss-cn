@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { ReadLink } from "./ReadLink";
 import { useMemo, type ReactNode } from "react";
 import { ArrowRight } from "lucide-react";
 import { tidyTitle } from "@/lib/article";
@@ -48,7 +48,7 @@ export function DailyHighlight({ foot }: { foot?: ReactNode }) {
       foot={foot}
     >
       <div key={pick.id} className="desk-tile is-review">
-        <Link href={`/read/${pick.articleId}?hl=${pick.id}`} className="group flex min-w-0 flex-1 flex-col">
+        <ReadLink href={`/read/${pick.articleId}?hl=${pick.id}`} className="group flex min-w-0 flex-1 flex-col">
           <blockquote className="line-clamp-2 font-serif text-[18px] leading-[1.45] text-ink [font-variation-settings:'opsz'_24]">
             <span className="m-hl" data-c={pick.color && pick.color !== "yellow" ? pick.color : undefined}>
               {pick.anchor.quote.trim()}
@@ -62,7 +62,7 @@ export function DailyHighlight({ foot }: { foot?: ReactNode }) {
             </span>
             <ArrowRight size={13} className="desk-source-go" aria-hidden />
           </p>
-        </Link>
+        </ReadLink>
         <div className="flex shrink-0 flex-col items-stretch justify-center gap-1.5 border-l border-rule pl-5 max-sm:flex-row max-sm:border-l-0 max-sm:border-t max-sm:pl-0 max-sm:pt-3">
           <button
             type="button"

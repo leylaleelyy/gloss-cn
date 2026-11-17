@@ -1,7 +1,6 @@
 "use client";
 
 import { useAuth } from "@/components/account/Auth";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "@/components/ui/TopBar";
 import { wordCount, type Article } from "@/lib/article";
@@ -10,7 +9,7 @@ import { hideSample, useLibraryPrefs } from "@/lib/library-prefs";
 import { normalizeUrl } from "@/lib/links";
 import { SAMPLES } from "@/lib/samples";
 import { applySettings } from "@/lib/settings";
-import { useStore } from "@/lib/store";
+import { flushStorePersistence, useStore } from "@/lib/store";
 import { Hero } from "./Hero";
 import { HomeBelow } from "./HomeBelow";
 import { ImportBar, type Busy } from "./ImportBar";
@@ -20,7 +19,6 @@ import { ShelfSheet, type ShelfItem } from "./ShelfSheet";
 
 /** One screen: a headline that shows what it does, a place to paste, and your shelf. */
 export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boolean }) {
-  const router = useRouter();
   // Known on the server at load, so a signed-in reader never sees the demo flash; then live, for a sign-in from this page.
   const { isLoaded, isSignedIn } = useAuth();
   const signedIn = isLoaded ? Boolean(isSignedIn) : signedInAtLoad;
@@ -40,7 +38,6 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
   const [pasteOpen, setPasteOpen] = useState(false);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [leaving, setLeaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -50,13 +47,13 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
     applySettings(useStore.getState().settings);
   }, [hydrate]);
 
-  // Leave with a soft fade, so the page turns rather than cuts.
+  // Start the reader in a fresh document, matching a direct book load.
   const go = useCallback(
     (id: string, hl?: string) => {
-      setLeaving(true);
-      setTimeout(() => router.push(`/read/${id}${hl ? `?hl=${hl}` : ""}`), 240);
+      flushStorePersistence();
+      window.location.assign(`/read/${encodeURIComponent(id)}${hl ? `?hl=${encodeURIComponent(hl)}` : ""}`);
     },
-    [router]
+    []
   );
 
   const finish = useCallback(
@@ -233,7 +230,7 @@ export function Landing({ signedIn: signedInAtLoad = false }: { signedIn?: boole
   }, [library, progress, glosses, hydrated, hiddenSamples]);
 
   return (
-    <div className={`landing relative z-[1] flex min-h-dvh flex-col transition-[opacity,filter,transform] duration-300 ease-[var(--ease-out)] ${leaving ? "scale-[0.995] opacity-0 blur-[2px]" : ""}`}>
+    <div className="landing relative z-[1] flex min-h-dvh flex-col">
       <TopBar />
 
       {/* One screen: the headline and the link bar centred in the room above, and the desk at the foot. */}
