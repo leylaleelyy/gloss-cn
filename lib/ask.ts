@@ -346,7 +346,7 @@ async function explainImage(ix: DocIndex, gloss: Gloss) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "图片分析失败，请检查视觉模型设置。");
-    if (controllers.get(gloss.id) === controller) update({content:result.content,model:result.model,streaming:false,error:undefined});
+    if (controllers.get(gloss.id) === controller) update({content:result.content,model:result.model,truncated:result.truncated === true,streaming:false,error:undefined});
   } catch (error) {
     if (controllers.get(gloss.id) === controller) update({streaming:false,error:controller.signal.aborted ? "已停止图片分析。" : error instanceof Error ? error.message : "图片分析失败。"});
   } finally { if (controllers.get(gloss.id) === controller) controllers.delete(gloss.id); }

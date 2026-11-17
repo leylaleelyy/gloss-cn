@@ -28,6 +28,7 @@ export type Turn = {
   /** The web results this answer may cite as [1], [2]. */
   sources?: Source[];
   error?: string;
+  truncated?: boolean;
   streaming?: boolean;
 };
 

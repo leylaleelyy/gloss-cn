@@ -1,4 +1,4 @@
-import { visionProvider } from "@/lib/vision-models";
+import { visionProvider, visionGenerationOptions } from "@/lib/vision-models";
 import { providerConfigured } from "@/lib/provider";
 import { needKey } from "@/lib/quota";
 import { getProvider, aiHeaders } from "@/lib/provider";
@@ -61,8 +61,7 @@ export async function POST(req: Request) {
         model,
         stream: true, // Qwen3.8 Flash only answers as a stream
         stream_options: { include_usage: true },
-        temperature: 0,
-        max_tokens: 4096,
+        ...visionGenerationOptions(model, 4096, 0),
         messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: image } }, { type: "text", text: layout ? LAYOUT_PROMPT : PROMPT }] }],
       }),
     });

@@ -98,6 +98,7 @@ function TurnBody({ t }: { t: Turn }) {
   return (
     <>
       <Answer text={t.content} streaming={t.streaming} sources={t.sources} />
+      {t.truncated && <p className="mt-2 text-[12.5px] text-rubric-text">回答已达到模型输出上限，内容尚未完成。可在下方追问“继续”，接着讲解。</p>}
       {t.error && <p className="mt-2 text-[12.5px] text-rubric-text">{t.error}</p>}
       {!t.streaming && t.sources?.length ? <Sources sources={t.sources} /> : null}
     </>
