@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { anchorToRange, blockEl } from "@/lib/anchor";
 import { MARKERS } from "@/lib/settings";
 import { useStore, type Gloss, type Highlight } from "@/lib/store";
@@ -18,7 +18,7 @@ const anchorGroup = (g: Gloss) => g.anchor
  * Glosses and the reader's own notes share the margin and one layout, so
  * neither ever covers the other.
  */
-export function Margin({
+function MarginImpl({
   glosses,
   notes,
   articleEl,
@@ -203,3 +203,6 @@ function EmptyMargin({ top }: { top: number }) {
     </div>
   );
 }
+
+// Reading-position updates do not change this surface. Keep scroll work out of its subtree.
+export const Margin = memo(MarginImpl);

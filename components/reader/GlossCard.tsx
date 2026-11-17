@@ -1,7 +1,7 @@
 "use client";
 
 import { Show, SignInButton } from "@/components/account/Auth";
-import { forwardRef, useEffect, useRef, useState, type CSSProperties } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, Check, ChevronsDownUp, Copy, CornerDownRight, RotateCcw, Square, Trash2 } from "lucide-react";
 import { ACTIONS } from "@/lib/actions";
 import { followUp, openKeyMenu, openRelatedGloss, retry, stopGloss } from "@/lib/ask";
@@ -358,9 +358,9 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
 
 /** The closed note's second line: the key answer, or the pen still writing. */
 function Gist({ t, prominent = false }: { t: Turn; prominent?: boolean }) {
+  const line = useMemo(() => t.analysis?.simplified?.trim() || t.analysis?.translation?.trim() || t.analysis?.backbone?.trim() || keyLine(t.content), [t.analysis, t.content]);
   if (t.error && !t.content && !t.analysis) return <p className="mt-1 line-clamp-1 text-[13px] leading-[1.45] text-rubric-text">{t.error}</p>;
   if (t.streaming && !t.content && !t.analysis) return <span className="writing-line mt-2 block" aria-label="Writing" role="status" />;
-  const line = t.analysis?.simplified?.trim() || t.analysis?.translation?.trim() || t.analysis?.backbone?.trim() || keyLine(t.content);
   return line ? <p className={`note-summary mt-1 ${prominent ? "line-clamp-3 text-[13.5px] leading-[1.5] text-ink" : "line-clamp-2 text-[13px] leading-[1.45] text-ink-3"}`}>{line}</p> : null;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useGlosses, useHighlights, useStore } from "@/lib/store";
 import { useReader } from "./context";
 import { readingScrollBehavior } from "@/lib/reading-motion";
@@ -12,7 +12,7 @@ type Geo = { docTop: number; docH: number; blocks: { id: string; top: number; h:
  * yellow, glosses are vermilion dots, and the brief's sections are ticks.
  * Click or drag anywhere to travel.
  */
-export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
+function RailImpl({ articleEl }: { articleEl: HTMLElement | null }) {
   const { ix } = useReader();
   const glosses = useGlosses(ix.article.id);
   const highlights = useHighlights(ix.article.id);
@@ -192,3 +192,6 @@ export function Rail({ articleEl }: { articleEl: HTMLElement | null }) {
   );
 }
 
+
+// Reading-position updates do not change this surface. Keep scroll work out of its subtree.
+export const Rail = memo(RailImpl);
