@@ -1,6 +1,6 @@
 import type { ResponseLanguage } from "./response-language";
 import type { ModelKey } from "./models";
-import { isUILanguage, type UILanguage } from "./ui-lang";
+import type { UILanguage } from "./ui-lang";
 
 /** Highlighter colours. */
 export type Marker = "yellow" | "green" | "blue" | "pink";
@@ -150,7 +150,7 @@ export function applySettings(s: Settings) {
   el.dataset.face = s.face;
   el.dataset.align = s.align;
   el.dataset.paras = s.paras;
-  el.dataset.lang = isUILanguage(s.uiLanguage) ? s.uiLanguage : "en";
+  el.dataset.lang = s.uiLanguage === "zh" ? "zh" : "en";
   el.lang = el.dataset.lang;
   el.style.setProperty("--read-size", `${s.size}px`);
   el.style.setProperty("--leading", String(LEADING[s.leading]));

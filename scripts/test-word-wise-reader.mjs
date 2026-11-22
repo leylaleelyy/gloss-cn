@@ -60,19 +60,19 @@ assert.ok(await evaluate(`Array.from(document.querySelectorAll('.dictionary-prev
 assert.equal(await evaluate(`document.querySelector('[data-gloss="summary-explain"] .note-summary')?.textContent`),'The key explanation stays visible.');
 assert.equal(await evaluate(`document.querySelector('[data-gloss="summary-analyze"] .note-summary')?.textContent`),'The simplified meaning stays visible.');
 const shot=await send('Page.captureScreenshot' ,{format:'png'});await writeFile(join(profile,'screenshot.png'),Buffer.from(shot.data,'base64'));console.log('Screenshot:',join(profile,'screenshot.png'));
-await evaluate(`document.querySelector('[aria-label="Contents · 目录"]').click()`);await until('!!document.querySelector("[aria-label=搜索章节]")');
-assert.ok(await evaluate(`document.querySelector('[aria-label="Book contents"]').textContent.includes('显示更多')`));
-await evaluate(`document.querySelector('[aria-label="搜索章节"]').focus();window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`);
-await until(`!document.querySelector('[aria-label="搜索章节"]')`);
-assert.equal(await evaluate(`document.activeElement?.getAttribute('aria-label')`),'Contents · 目录');
-await evaluate(`document.querySelector('[aria-label="Contents · 目录"]').click()`);await until('!!document.querySelector("[aria-label=搜索章节]")');
+await evaluate(`document.querySelector('[aria-label="Contents"]').click()`);await until(`!!document.querySelector('[aria-label="Search sections"]')`);
+assert.ok(await evaluate(`document.querySelector('[aria-label="Book contents"]').textContent.includes('Show more')`));
+await evaluate(`document.querySelector('[aria-label="Search sections"]').focus();window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`);
+await until(`!document.querySelector('[aria-label="Search sections"]')`);
+assert.equal(await evaluate(`document.activeElement?.getAttribute('aria-label')`),'Contents');
+await evaluate(`document.querySelector('[aria-label="Contents"]').click()`);await until(`!!document.querySelector('[aria-label="Search sections"]')`);
 
-await evaluate(`const input=document.querySelector('[aria-label="搜索章节"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Chapter 99');input.dispatchEvent(new Event('input',{bubbles:true}));`);
+await evaluate(`const input=document.querySelector('[aria-label="Search sections"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Chapter 99');input.dispatchEvent(new Event('input',{bubbles:true}));`);
 await until(`document.querySelector('[aria-label="Book contents"]').textContent.includes('Chapter 99') && !document.querySelector('[aria-label="Book contents"]').textContent.includes('Chapter 98')`);
 await evaluate(`document.querySelector('[aria-label="Book contents"] button').click()`);await sleep(200);
 assert.ok(await evaluate(`Math.abs(document.querySelector('[data-block="p3920"]').getBoundingClientRect().top-innerHeight*.28)<4`),'Far chapter jumps should settle immediately');
 await evaluate(`window.dispatchEvent(new PageTransitionEvent('pagehide'));`);
-assert.equal(await evaluate(`JSON.parse(localStorage.getItem('gloss:v1')).progress['wise-test'].block`),'p3920','Exit must flush progress before debounce');
+assert.equal(await evaluate(`JSON.parse(localStorage.getItem('gloss:v2:progress:wise-test')).block`),'p3920','Exit must flush progress before debounce');
 await evaluate('document.querySelector(".word-wise-toggle").click()');await until('!document.querySelector(".word-wise")');assert.equal(await evaluate('document.querySelector(".prose-read").hasAttribute("data-wise-inline")'),false);
 console.log('PASS: 4,000 paragraphs and 10,000 vocabulary entries; shared Worker; zero async displacement; short labels fit without overlap; direct Dictionary and reuse; collapsed Dictionary/Explain/Analyze summaries remain visible; Escape focus restoration; chapter search and long-distance jump; immediate exit persistence; mode cleanup.');
 }finally{ws?.close();chrome.kill()}
