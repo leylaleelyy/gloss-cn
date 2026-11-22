@@ -35,5 +35,8 @@
       "database_name": "gloss-cn",
       "database_id": "5413d75e-2c93-4327-be0d-7c5140d8a5ef"
     }
-  ]
+  ],
+  "vars": {
+    "GOOGLE_CLIENT_ID": "268206939760-pbi281eetcov1bgttnbjvrvocpcvq3v1.apps.googleusercontent.com"
+  }
 }

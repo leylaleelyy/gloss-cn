@@ -1,10 +1,9 @@
 "use client";
 
-import { LogIn, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Popover, barBtn } from "@/components/ui/Popover";
-import { GoogleSignIn } from "@/components/account/GoogleSignIn";
 import { accountsEnabled } from "@/lib/accounts";
-import { signOutGoogle, useGoogleAuth } from "@/lib/google-auth";
+import { openGoogleSignIn, signOutGoogle, useGoogleAuth } from "@/lib/google-auth";
 import { useSyncStatus } from "@/lib/sync-status";
 import { useI18n } from "@/lib/ui-lang";
 
@@ -17,24 +16,14 @@ export function Account() {
 
   if (!user) {
     return (
-      <Popover
-        label={t("auth.signIn")}
-        tip={t("auth.syncTitle")}
-        width={300}
-        triggerClass={`${barBtn} !px-3 whitespace-nowrap`}
-        trigger={<span>{t("auth.signIn")}</span>}
+      <button
+        type="button"
+        onClick={openGoogleSignIn}
+        className={`${barBtn} !px-3 whitespace-nowrap`}
+        data-tip={t("auth.syncTitle")}
       >
-        {() => (
-          <div>
-            <p className="text-[15px] font-medium leading-tight text-ink">{t("auth.syncTitle")}</p>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">{t("auth.syncBody")}</p>
-            <div className="mt-3.5">
-              <GoogleSignIn />
-            </div>
-            <p className="mt-3 text-center text-[11.5px] leading-relaxed text-ink-4">{t("auth.googleOnly")}</p>
-          </div>
-        )}
-      </Popover>
+        {t("auth.signIn")}
+      </button>
     );
   }
 
