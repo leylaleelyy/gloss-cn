@@ -10,11 +10,9 @@ import { ARTICLE_QUESTIONS } from "@/lib/actions";
 import { SAMPLE_QUESTIONS } from "@/lib/samples";
 import { fetchBrief } from "@/lib/ask";
 import { indexArticle } from "@/lib/doc";
-import { fetchText } from "@/lib/sync";
 import { flushStorePersistence, loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
 import { applySettings } from "@/lib/settings";
 import { readingScrollBehavior } from "@/lib/reading-motion";
-import { GlossWordmark } from "@/components/brand/Gloss";
 import { Block, type Mark } from "./Block";
 import { Brief } from "./Brief";
 import { CarefulRead } from "./CarefulRead";
@@ -32,12 +30,11 @@ import { Contents } from "./Contents";
 import { TopBar } from "./TopBar";
 import { WordWise } from "./WordWise";
 import { VocabularyHighlights } from "./VocabularyHighlights";
+import { RemoteCards } from "./RemoteCards";
 import { useI18n } from "@/lib/ui-lang";
-import { useAuth } from "@/components/account/Auth";
 
 export function Reader({ id, initial }: { id: string; initial: Article | null }) {
   const { t } = useI18n();
-  const { userId } = useAuth();
   const [article, setArticle] = useState<Article | null>(initial);
   const [missing, setMissing] = useState(false);
   const hydrate = useStore((s) => s.hydrate);
@@ -54,29 +51,16 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
   useEffect(() => {
     let cancelled = false;
     if (!initial && !hasArticle) {
-      // Not on this device: it may be in the reader's account, fetched now that it is opened
-      // or once sign-in finishes.
-      void loadDoc(id)
-        .then((a) => a ?? fetchText(id))
-        .then((a) => {
-          if (cancelled) return;
-          if (a) { setArticle(a); setMissing(false); }
-          else setMissing(true);
-        });
-    }
-    const onUpdated = (event: Event) => {
-      const updatedId = (event as CustomEvent<string>).detail;
-      if (updatedId !== id || initial) return;
-      void fetchText(id).then((a) => {
-        if (!cancelled && a) { setArticle(a); setMissing(false); }
+      // Text bodies stay on the device that imported them. Without the local
+      // document, this device shows the synced cards only.
+      void loadDoc(id).then((a) => {
+        if (cancelled) return;
+        if (a) { setArticle(a); setMissing(false); }
+        else setMissing(true);
       });
-    };
-    window.addEventListener("gloss:doc-updated", onUpdated);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("gloss:doc-updated", onUpdated);
-    };
-  }, [id, initial, hasArticle, userId]);
+    }
+    return () => { cancelled = true; };
+  }, [id, initial, hasArticle]);
 
   // The text was read again (more carefully, or a page in the background): show the new reading in
   // place. Scroll anchoring alone did not hold when a page above the reader was swapped, so the
@@ -104,19 +88,7 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
     if (el) window.scrollBy({ top: el.getBoundingClientRect().top - k.top, behavior: "instant" });
   }, [article]);
 
-  if (missing)
-    return (
-      <main className="grid min-h-dvh place-items-center px-6 text-center">
-        <div>
-          <GlossWordmark />
-          <p className="mt-6 font-serif text-[26px] text-ink">{t("reader.notOnDevice")}</p>
-          <p className="mt-2 text-[14px] text-ink-3">{t("reader.notOnDeviceHint")}</p>
-          <Link href="/" className="mt-6 inline-flex h-10 items-center rounded-full bg-ink px-5 text-[14px] font-medium text-bg">
-            {t("reader.backToLibrary")}
-          </Link>
-        </div>
-      </main>
-    );
+  if (missing) return <RemoteCards id={id} />;
   if (!shown)
     return (
       <main aria-busy className="mx-auto max-w-[44rem] px-6 pt-[calc(var(--topbar-h)+64px)]" style={{ animation: "fade 0.4s 0.15s var(--ease-out) both" }}>

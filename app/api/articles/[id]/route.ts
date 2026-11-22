@@ -1,13 +1,13 @@
 import { auth } from "@/lib/auth";
-import { articleDoc } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-/** One imported text from the reader's account, for a device that has the shelf entry but not the text. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Text bodies are no longer fetched from the account. An imported text lives on
+ * the device that imported it; other devices show its synced cards instead.
+ */
+export async function GET() {
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
-  const doc = await articleDoc(userId, (await params).id);
-  if (!doc) return Response.json({ error: "Not found." }, { status: 404 });
-  return Response.json({ doc });
+  return Response.json({ error: "The full text stays on the device that imported it." }, { status: 410 });
 }

@@ -19,15 +19,12 @@
  * seconds, so what an agent saves arrives while you look.
  */
 
-import { flushDocMigrations, forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
-import type { Article } from "./article";
+import { flushDocMigrations, useStore, type RemoteChanges } from "./store";
 import { forgetCover } from "./covers";
 import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
 import { expireGoogleCredential, googleAuthHeaders } from "./google-auth";
 import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
-import { gzipSync } from "fflate";
-import { shrinkImageForVision } from "./vision-image";
 import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
 import { confirmSyncDeletions } from "./sync-guard";
 import { SYNCED_SETTING_KEYS } from "./settings";
@@ -47,104 +44,6 @@ const MAX_BODY = 15_000_000;
 /** A stalled request must not leave the badge on "Syncing" forever. */
 const PULL_TIMEOUT = 30_000;
 const PUSH_TIMEOUT = 120_000;
-
-/** Long texts ride compressed so a large EPUB fits the request and D1 row limits. */
-function packDoc(doc: Article): unknown {
-  const text = JSON.stringify(doc);
-  if (text.length < 700_000) return doc;
-  const bytes = gzipSync(new TextEncoder().encode(text));
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-  return { __gz: btoa(binary) };
-}
-
-/** True when the local text still carries pictures that an older sync may have stripped. */
-function hasEmbeddedImages(doc: Article): boolean {
-  return Boolean(doc.image?.startsWith("data:") || doc.blocks.some((block) => block.src?.startsWith("data:")));
-}
-
-const MAX_INLINE_DOC = 4_000_000;
-const DOC_CHUNK = 700_000;
-
-/** Upload one extracted book picture; a failed non-auth upload drops that picture, not the book. */
-async function uploadAsset(articleId: string, blockId: string, mime: string, data: string): Promise<boolean> {
-  const res = await fetchWithTimeout("/api/assets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...googleAuthHeaders() },
-    body: JSON.stringify({ articleId, id: blockId, mime, data }),
-  }, PUSH_TIMEOUT);
-  if (res.status === 401) expireGoogleCredential();
-  return res.ok;
-}
-
-/**
- * Move embedded EPUB pictures out of the document and into individual assets.
- * The document then stays small; readers on another device fetch each picture on demand.
- */
-async function prepareDoc(articleId: string, doc: Article): Promise<Article> {
-  const jobs: { blockId: string; mime: string; data: string }[] = [];
-  const blocks = await Promise.all(doc.blocks.map(async (block) => {
-    if (!block.src?.startsWith("data:image/")) return block;
-    const shrunk = await shrinkImageForVision(block.src);
-    const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([a-z\d+/=]+)$/i.exec(shrunk);
-    if (!match) return block;
-    jobs.push({ blockId: block.id, mime: match[1], data: match[2] });
-    return { ...block, src: `gloss-asset:${articleId}:${block.id}` };
-  }));
-  const failed = new Set<string>();
-  for (let i = 0; i < jobs.length; i += 4) {
-    await Promise.all(jobs.slice(i, i + 4).map(async (job) => {
-      if (!(await uploadAsset(articleId, job.blockId, job.mime, job.data))) failed.add(job.blockId);
-    }));
-  }
-  return {
-    ...doc,
-    blocks: blocks.filter((block) => !failed.has(block.id)),
-    ...(doc.image?.startsWith("data:") ? { image: undefined } : {}),
-  };
-}
-const REPACK_KEY = "gloss:docs-v6-images";
-
-function repackedImages(): Set<string> {
-  try {
-    const value = JSON.parse(localStorage.getItem(REPACK_KEY) || "[]");
-    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function markImagesRepacked(ids: Iterable<string>) {
-  const set = repackedImages();
-  let changed = false;
-  for (const id of ids) changed = !set.has(id) ? (set.add(id), true) : changed;
-  if (!changed) return;
-  try { localStorage.setItem(REPACK_KEY, JSON.stringify([...set])); } catch {}
-}
-
-/** A large text uploads as versioned gzip chunks and leaves a tiny pointer in the article row. */
-async function uploadDoc(articleId: string, packed: unknown): Promise<unknown> {
-  if (!packed || typeof packed !== "object" || typeof (packed as { __gz?: unknown }).__gz !== "string") return packed;
-  const gz = (packed as { __gz: string }).__gz;
-  if (gz.length <= MAX_INLINE_DOC) return packed;
-  const total = Math.ceil(gz.length / DOC_CHUNK);
-  const uploadId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const send = async (seq: number) => {
-    const data = gz.slice(seq * DOC_CHUNK, (seq + 1) * DOC_CHUNK);
-    const res = await fetchWithTimeout(
-      `/api/articles/${encodeURIComponent(articleId)}/doc`,
-      { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ seq, total, data, uploadId }) },
-      PUSH_TIMEOUT
-    );
-    if (res.status === 401) expireGoogleCredential();
-    if (!res.ok) throw new Error(`doc ${res.status}`);
-  };
-  // Chunks are independent; a few in flight makes a large EPUB sync much faster.
-  for (let seq = 0; seq < total; seq += 4) {
-    await Promise.all(Array.from({ length: Math.min(4, total - seq) }, (_, i) => send(seq + i)));
-  }
-  return { __chunked: true, uploadId };
-}
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
@@ -232,7 +131,6 @@ const emptyBaseline = (): Baseline => ({ version: BASELINE_VERSION, since: null,
 export function startSync(userId: string) {
   const storeKey = `gloss:sync:${userId}`;
   let base: Baseline = emptyBaseline();
-  const alreadyRepacked = repackedImages();
   try {
     const raw = localStorage.getItem(storeKey);
     if (raw) {
@@ -273,27 +171,8 @@ export function startSync(userId: string) {
         const seenEntry = seen[id];
         const dataChanged = seenEntry?.[0] !== e.key;
         let row: OutRow | null = dataChanged ? { id, articleId: e.articleId, data: e.data } : null;
-        // A text goes up with its first shelf entry, and again when it is replaced (its rev changes).
-        // Samples ship with the app. A text already on the shelf still uploads a missing document.
-        if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
-          // Most pushes carry annotations, not text changes. Once a text is known to
-          // have no pictures, there is no reason to open its megabyte-sized document
-          // again on every push.
-          const skipDoc = !dataChanged && Boolean(seenEntry?.[2]) && alreadyRepacked.has(id);
-          if (!skipDoc) {
-            const doc = await loadDoc(id);
-            const images = Boolean(doc && hasEmbeddedImages(doc));
-            // Keep retrying until this device actually gets its picture-bearing text to D1.
-            const needsRepack = Boolean(doc && images && !alreadyRepacked.has(id));
-            if (doc && (row || !seenEntry?.[2] || needsRepack)) {
-              row ??= { id, articleId: e.articleId, data: e.data };
-              row.data = { ...(e.data as Record<string, unknown>), docAt: Date.now() };
-              row.doc = await uploadDoc(e.articleId, packDoc(doc));
-              row.images = images;
-            }
-            if (doc && !images) markImagesRepacked([id]);
-          }
-        }
+        // Text bodies stay on the importing device. Only the shelf entry, marks,
+        // notes, progress and preferences travel between devices.
         if (!row) continue;
         rows.push({ c, row, key: stableCached(row.data), size: JSON.stringify(row).length });
       }
@@ -342,14 +221,10 @@ export function startSync(userId: string) {
       for (const r of batch) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
         else {
-          const previous = base.seen[r.c][r.row.id];
-          const docAt = r.c === "articles" ? (r.row.data as { docAt?: number }).docAt : undefined;
-          base.seen[r.c][r.row.id] = [r.key, r.row.articleId, r.c === "articles" && r.row.doc !== undefined ? 1 : previous?.[2], docAt ?? previous?.[3]];
-          if (r.c === "articles" && docAt) useStore.getState().shelve(r.row.id, { docAt });
+          base.seen[r.c][r.row.id] = [r.key, r.row.articleId];
         }
       }
       clearArticleDeletions(batch.filter((r) => r.c === "articles" && r.row.deleted).map((r) => r.row.id));
-      markImagesRepacked(batch.filter((r) => r.c === "articles" && r.row.images).map((r) => r.row.id));
       save();
       batch = [];
       bytes = 0;
@@ -377,21 +252,8 @@ export function startSync(userId: string) {
     if (!res.ok) throw new Error(`pull ${res.status}`);
     const { now, changes } = (await res.json()) as { now: string; changes: RemoteChanges };
 
-    // A text replaced on another device: drop this device's copy so it is fetched fresh on open.
-    for (const r of changes.articles ?? []) {
-      const before = base.seen.articles[r.id];
-      const localDocAt = useStore.getState().library.find((item) => item.id === r.id)?.docAt;
-      const remoteDocAt = (r.data as { docAt?: number } | null)?.docAt;
-      const replaced =
-        (!r.deleted && remoteDocAt && remoteDocAt !== localDocAt) ||
-        (!r.deleted && r.data && before && (r.data as { rev?: number }).rev !== undefined && stable(r.data) !== before[0]);
-      if (replaced) {
-        await forgetDoc(r.id);
-        window.dispatchEvent(new CustomEvent("gloss:doc-updated", { detail: r.id }));
-      }
-      // Removed on another device: its painted cover goes from this one too.
-      if (r.deleted) void forgetCover(r.id);
-    }
+    // Removed on another device: its painted cover goes from this one too.
+    for (const r of changes.articles ?? []) if (r.deleted) void forgetCover(r.id);
     const changedRows = COLLECTIONS.reduce((n, c) => n + (changes[c]?.length ?? 0), 0);
     useStore.getState().applyRemote(changes);
     await applyRemoteLearning(changes.vocabulary ?? [], changes.learning ?? []);
@@ -403,7 +265,7 @@ export function startSync(userId: string) {
       for (const r of changes[c] ?? []) {
         const e = entities[c].get(r.id);
         if (r.deleted) delete base.seen[c][r.id];
-        else if (e) base.seen[c][r.id] = [e.key, e.articleId, c === "articles" ? (r.hasDoc ? 1 : 0) : undefined, c === "articles" ? (r.data as { docAt?: number } | null)?.docAt : undefined];
+        else if (e) base.seen[c][r.id] = [e.key, e.articleId];
       }
     }
     base.since = now;
@@ -485,17 +347,4 @@ export function startSync(userId: string) {
       window.removeEventListener("gloss:sync-now", retry);
     },
   };
-}
-
-/** Fetch one text from the account and keep it on this device. Null when signed out or not there. */
-export async function fetchText(id: string): Promise<Article | null> {
-  try {
-    const res = await fetchWithTimeout(`/api/articles/${encodeURIComponent(id)}`, { headers: googleAuthHeaders() }, PULL_TIMEOUT);
-    if (!res.ok) return null;
-    const { doc } = (await res.json()) as { doc: Article };
-    await saveDoc(doc);
-    return doc;
-  } catch {
-    return null;
-  }
 }
