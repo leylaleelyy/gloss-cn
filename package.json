@@ -34,7 +34,8 @@
     "test:ui-language": "node scripts/test-ui-language.mjs",
     "test:vocabulary-page": "node scripts/test-vocabulary-page.mjs",
     "db:migrate:local": "wrangler d1 execute gloss-cn --local --file=db/schema.sql",
-    "test:google-auth": "node scripts/test-google-auth.mjs"
+    "test:google-auth": "node scripts/test-google-auth.mjs",
+    "test:word-wise-book": "node scripts/test-word-wise-book.mjs"
   },
   "dependencies": {
     "@llamaindex/liteparse-wasm": "2.15.1",

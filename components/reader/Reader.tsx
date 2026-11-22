@@ -131,7 +131,7 @@ function ReaderInner({ article }: { article: Article }) {
   const [current, setCurrent] = useState<string | null>(null);
   const [pastTitle, setPastTitle] = useState(false);
   const [openHl, setOpenHl] = useState<OpenHighlight | null>(null);
-  const [toast, setToast] = useState<null | { kind: "resume"; n: number } | { kind: "hint" }>(null);
+  const [toast, setToast] = useState<null | { kind: "resume" | "latest"; n: number } | { kind: "hint" }>(null);
 
   const glosses = useGlosses(articleId);
   const highlights = useHighlights(articleId);
@@ -375,6 +375,20 @@ function ReaderInner({ article }: { article: Article }) {
       setUI({ activeHighlight: hl.id });
       return;
     }
+    // The newest card is the most likely place a returning reader wants to be.
+    const latestCard = [
+      ...glosses.map((g) => ({ createdAt: g.createdAt, block: g.anchor?.start.b ?? g.at })),
+      ...highlights.filter((h) => h.note).map((h) => ({ createdAt: h.createdAt, block: h.anchor.start.b })),
+    ]
+      .filter((card): card is { createdAt: number; block: string } => Boolean(card.block && ix.order.has(card.block)))
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (latestCard) {
+      jumpToBlock(latestCard.block, { flash: false });
+      const n = ix.numbers.get(latestCard.block);
+      if (n) setTimeout(() => setToast((toast) => toast ?? { kind: "latest", n }), 3000);
+      return;
+    }
+
     const p = useStore.getState().progress[articleId];
     const n = p ? ix.numbers.get(p.block) : undefined;
     if (p && n && n > 2 && p.pct < 0.98) {
@@ -390,11 +404,11 @@ function ReaderInner({ article }: { article: Article }) {
           setTimeout(() => setToast((t) => t ?? { kind: "hint" }), 1400);
       } catch {}
     }
-  }, [hydrated, articleEl, articleId, ix, jumpToBlock, setUI]);
+  }, [hydrated, articleEl, articleId, ix, jumpToBlock, setUI, glosses, highlights]);
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.kind === "hint" ? 9000 : 6000);
+    const t = setTimeout(() => setToast(null), toast.kind === "hint" || toast.kind === "latest" ? 9000 : 6000);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -685,6 +699,21 @@ function ReaderInner({ article }: { article: Article }) {
               className="font-medium underline decoration-lens-mute underline-offset-4"
             >
               {t("reader.startOver")}
+            </button>
+          </Toast>
+        )}
+        {toast?.kind === "latest" && (
+          <Toast onClose={() => setToast(null)}>
+            <span>{t("reader.latestCard", { n: toast.n })}</span>
+            <button
+              type="button"
+              onClick={() => {
+                window.scrollTo({ top: 0, behavior: readingScrollBehavior() });
+                setToast(null);
+              }}
+              className="font-medium underline decoration-lens-mute underline-offset-4"
+            >
+              {t("reader.jumpStart")}
             </button>
           </Toast>
         )}

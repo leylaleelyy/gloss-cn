@@ -8,11 +8,12 @@ import { readProvider } from '@/lib/provider-config';
 import { loadWiseWords } from '@/lib/word-wise-source';
 import { type WiseWord } from '@/lib/word-wise';
 import { useReader } from './context';
-import { Languages, ChevronDown, Check, LoaderCircle, AlertCircle } from 'lucide-react';
+import { BookA, ChevronDown, Check, LoaderCircle, AlertCircle } from 'lucide-react';
 import { acquireVocabularyComputer } from '@/lib/vocabulary-worker';
 import { observeInlineWiseHints } from '@/lib/word-wise-layout';
 import { startGloss } from '@/lib/ask';
 import { useStore } from '@/lib/store';
+import { setWordWiseFor, useWordWise } from '@/lib/word-wise-pref';
 import { Popover, barBtn } from '@/components/ui/Popover';
 import { useI18n } from '@/lib/ui-lang';
 const useWise = create<{ error: string; loading: boolean }>(() => ({ error: '', loading: false }));
@@ -21,22 +22,25 @@ export function useWiseHints(id: string) {
   return useSyncExternalStore(useCallback(listener => subscribeWiseHints(id, listener), [id]), useCallback(() => getWiseHints(id), [id]), serverHints);
 }
 export function WordWiseControl() {
+  const { ix } = useReader();
   const p = useLearning(s => s.preferences);
+  const on = useWordWise(ix.article.id);
   const error = useWise(s => s.error);
   const loading = useWise(s => s.loading);
   const { t } = useI18n();
   const descriptions = t('wordwise.levels').split('|');
   return <div className="word-wise-controls flex shrink-0 items-center">
-    <button type="button" className={`${barBtn} word-wise-toggle`} aria-label={t('wordwise.label')} aria-pressed={p.wordWise}
-      data-tip={p.wordWise ? t('wordwise.off') : t('wordwise.on')} onClick={() => setLearning({ wordWise: !p.wordWise })}>
-      {loading ? <LoaderCircle size={18} className="animate-spin" aria-hidden /> : error && p.wordWise ? <AlertCircle size={18} aria-hidden /> : <Languages size={18} strokeWidth={1.8} aria-hidden />}
+    <button type="button" className={`${barBtn} word-wise-toggle`} aria-label={t('wordwise.label')} aria-pressed={on}
+      data-tip={on ? t('wordwise.off') : t('wordwise.on')} onClick={() => setWordWiseFor(ix.article.id, !on)}>
+      {loading ? <LoaderCircle size={18} className="animate-spin" aria-hidden /> : error && on ? <AlertCircle size={18} aria-hidden /> : <BookA size={18} strokeWidth={1.8} aria-hidden />}
       <span className="toolbar-label">{t('wordwise.label')}</span>
     </button>
-    {p.wordWise && <Popover label={t('wordwise.levelLabel')} tip={t('wordwise.levelTip')} triggerClass={`${barBtn} word-wise-level`} width={288}
+    {on && <Popover label={t('wordwise.levelLabel')} tip={t('wordwise.levelTip')} triggerClass={`${barBtn} word-wise-level`} width={288}
       trigger={<><span className="tabular-nums text-xs">{p.level}</span><ChevronDown size={12} aria-hidden /></>}>
       {close => <div>
         <p className="text-sm font-medium text-ink">{t('wordwise.levelTip')}</p>
-        <p className="mt-1 mb-3 text-xs leading-relaxed text-ink-3">{t('wordwise.help')}</p>
+        <p className="mt-1 mb-1 text-xs leading-relaxed text-ink-3">{t('wordwise.help')}</p>
+        <p className="mb-3 text-xs leading-relaxed text-ink-4">{t('wordwise.perBook')}</p>
         <div role="group" aria-label={t('wordwise.group')} className="grid gap-1">
           {LEVELS.map((level, i) => <button key={level} type="button" aria-pressed={p.level === level}
             className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left transition-colors ${p.level === level ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk'}`}
@@ -54,9 +58,11 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
   const { ix } = useReader();
   const prefs = useLearning(s => s.preferences);
   const entries = useLearning(s => s.entries);
+  const ready = useLearning(s => s.ready);
+  const on = useWordWise(ix.article.id);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
-    if (!root || !prefs.wordWise) return;
+    if (!root || !on) return;
     const open = (event: MouseEvent | KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       const mark = target?.closest<HTMLElement>('[data-wise-from]');
@@ -77,18 +83,18 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
     root.addEventListener('click', open, true);
     root.addEventListener('keydown', open, true);
     return () => { root.removeEventListener('click', open, true); root.removeEventListener('keydown', open, true); };
-  }, [root, ix, prefs.wordWise]);
+  }, [root, ix, on]);
   useLayoutEffect(() => {
-    if (!root || !prefs.wordWise) return;
+    if (!root || !on) return;
     root.dataset.wiseInline = 'true';
     const dispose = observeInlineWiseHints(root);
     return () => { delete root.dataset.wiseInline; dispose(); };
-  }, [root, prefs.wordWise]);
+  }, [root, on]);
   useEffect(() => { const retry = () => setRevision(n => n + 1); window.addEventListener('gloss:provider', retry); window.addEventListener('online', retry); return () => { window.removeEventListener('gloss:provider', retry); window.removeEventListener('online', retry); }; }, []);
   useEffect(() => {
     clearWiseHints();
     useWise.setState({ error: '', loading: false });
-    if (!prefs.wordWise || !root) return;
+    if (!on || !root || !ready) return;
     let stopped = false, busy = false, failed = false;
     const controller = new AbortController(), visible = new Set<string>(), done = new Set<string>();
     const { computer, release } = acquireVocabularyComputer(entries);
@@ -144,6 +150,6 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
     }, { rootMargin: '1600px' });
     root.querySelectorAll<HTMLElement>('[data-block]').forEach(el => { if (['p', 'li', 'quote', 'note'].includes(blocks.get(el.dataset.block!)?.type || '')) observer.observe(el); });
     return () => { stopped = true; window.removeEventListener('scroll', onScroll); clearTimeout(timer); controller.abort(); release(); observer.disconnect(); clearWiseHints(); useWise.setState({ loading: false }); };
-  }, [ix, root, prefs.wordWise, prefs.level, entries, revision]);
+  }, [ix, root, on, ready, prefs.level, entries, revision]);
   return null;
 }
