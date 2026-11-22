@@ -346,6 +346,7 @@ export const useStore = create<State>((set, get) => ({
         words,
         origin: a.origin,
         addedAt: a.addedAt ?? Date.now(),
+        docAt: Date.now(),
         dek: a.dek,
         year,
         sourceUrl: a.sourceUrl,
@@ -384,7 +385,7 @@ export const useStore = create<State>((set, get) => ({
         continue;
       }
       // Prefer the fullest document; ties keep the entry that was added first.
-      group.sort((a, b) => (b.words ?? 0) - (a.words ?? 0) || a.addedAt - b.addedAt);
+      group.sort((a, b) => (b.words ?? 0) - (a.words ?? 0) || (b.docAt ?? 0) - (a.docAt ?? 0) || a.addedAt - b.addedAt);
       let canonical = { ...group[0] };
       for (const duplicate of group.slice(1)) {
         docs.push([duplicate.id, canonical.id]);
