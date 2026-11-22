@@ -240,6 +240,8 @@ export function startSync(userId: string) {
       // Vocabulary lives in its own IndexedDB store; a push must not run before it is read.
       await hydrateLearning();
       await pull();
+      // Fold texts that arrived under different ids on different devices before pushing the cleanup.
+      useStore.getState().dedupeLibrary();
       await push();
       setSyncStatus("synced");
     } catch (e) {

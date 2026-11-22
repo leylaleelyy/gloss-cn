@@ -6,6 +6,7 @@ import type { Action } from "./actions";
 import type { Article, BriefData } from "./article";
 import { modelOf, type ModelKey, type Source, type Usage } from "./models";
 import { responseLanguage } from "./response-language";
+import { libraryKey } from "./dedupe";
 import { DEFAULT_SETTINGS, SETTINGS_KEY, type Marker, type Settings } from "./settings";
 import { isUILanguage } from "./ui-lang";
 
@@ -152,6 +153,8 @@ type State = Persisted &
     setBrief: (articleId: string, b: BriefState | null) => void;
     setProgress: (articleId: string, p: Progress) => void;
     addToLibrary: (a: Article, words: number, extra?: Partial<LibraryItem>) => void;
+    /** Fold shelf entries that are the same text into one, carrying every mark and reading position over. */
+    dedupeLibrary: () => boolean;
     /** Change a shelf entry's library fields: its topic, tags, cover, favourite. */
     shelve: (id: string, patch: Partial<LibraryItem>) => void;
     removeFromLibrary: (id: string) => void;
@@ -262,6 +265,7 @@ export const useStore = create<State>((set, get) => ({
         localStorage.removeItem(KEY);
       } catch {}
     }
+    get().dedupeLibrary();
     void migrateDocs();
   },
 
@@ -328,7 +332,7 @@ export const useStore = create<State>((set, get) => ({
       };
     }),
 
-  addToLibrary: (a, words, extra) =>
+  addToLibrary: (a, words, extra) => {
     set((st) => {
       const year = Number(a.published?.match(/\b(1[5-9]\d\d|20\d\d)\b/)?.[1]) || undefined;
       const item: LibraryItem = {
@@ -348,7 +352,99 @@ export const useStore = create<State>((set, get) => ({
       // Undefined fields are left out, so a shelf entry's JSON stays as small as it was.
       for (const k of Object.keys(item) as (keyof LibraryItem)[]) if (item[k] === undefined) delete item[k];
       return { library: [item, ...st.library.filter((x) => x.id !== a.id)] };
-    }),
+    });
+    // The same link or file arriving again becomes the entry already on the shelf.
+    get().dedupeLibrary();
+  },
+
+  dedupeLibrary: () => {
+    const st = get();
+    const groups = new Map<string, LibraryItem[]>();
+    for (const item of st.library) {
+      const key = libraryKey(item);
+      const list = groups.get(key);
+      if (list) list.push(item);
+      else groups.set(key, [item]);
+    }
+    if (![...groups.values()].some((group) => group.length > 1)) return false;
+
+    const highlights = { ...st.highlights };
+    const glosses = { ...st.glosses };
+    const briefs = { ...st.briefs };
+    const progress = { ...st.progress };
+    const docs: [from: string, to: string][] = [];
+    const library: LibraryItem[] = [];
+
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        library.push(group[0]);
+        continue;
+      }
+      // Prefer the fullest document; ties keep the entry that was added first.
+      group.sort((a, b) => (b.words ?? 0) - (a.words ?? 0) || a.addedAt - b.addedAt);
+      let canonical = { ...group[0] };
+      for (const duplicate of group.slice(1)) {
+        docs.push([duplicate.id, canonical.id]);
+        canonical = {
+          ...canonical,
+          addedAt: Math.min(canonical.addedAt, duplicate.addedAt),
+          words: Math.max(canonical.words, duplicate.words),
+          topic: canonical.topic && canonical.topic !== "unsorted" ? canonical.topic : duplicate.topic,
+          tags: [...new Set([...(canonical.tags ?? []), ...(duplicate.tags ?? [])])],
+          favorite: Boolean(canonical.favorite || duplicate.favorite),
+          cover: canonical.cover ?? duplicate.cover,
+          image: canonical.image ?? duplicate.image,
+          dek: canonical.dek ?? duplicate.dek,
+          year: canonical.year ?? duplicate.year,
+          sourceUrl: canonical.sourceUrl ?? duplicate.sourceUrl,
+          finishedAt: Math.max(canonical.finishedAt ?? 0, duplicate.finishedAt ?? 0) || undefined,
+          addedBy: canonical.addedBy ?? duplicate.addedBy,
+          addedVia: canonical.addedVia ?? duplicate.addedVia,
+        };
+
+        const hs = highlights[duplicate.id];
+        if (hs?.length) {
+          const byId = new Map((highlights[canonical.id] ?? []).map((h) => [h.id, h]));
+          for (const h of hs) byId.set(h.id, { ...h, articleId: canonical.id });
+          highlights[canonical.id] = [...byId.values()];
+          delete highlights[duplicate.id];
+        }
+        const gs = glosses[duplicate.id];
+        if (gs?.length) {
+          const byId = new Map((glosses[canonical.id] ?? []).map((g) => [g.id, g]));
+          for (const g of gs) byId.set(g.id, { ...g, articleId: canonical.id });
+          glosses[canonical.id] = [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+          delete glosses[duplicate.id];
+        }
+        const brief = briefs[duplicate.id];
+        if (brief) {
+          const current = briefs[canonical.id];
+          if (!current || (brief.status === "ready" && current.status !== "ready") || (brief.status === "ready" && current.status === "ready" && brief.at > current.at)) briefs[canonical.id] = brief;
+          delete briefs[duplicate.id];
+        }
+        const p = progress[duplicate.id];
+        if (p) {
+          const current = progress[canonical.id];
+          if (!current || p.pct > current.pct || (p.pct === current.pct && p.at > current.at)) progress[canonical.id] = p;
+          delete progress[duplicate.id];
+        }
+      }
+      library.push(canonical);
+    }
+
+    set({ library, highlights, glosses, briefs, progress });
+    // The duplicate's text is folded into the canonical entry without blocking the shelf.
+    for (const [from, to] of docs) {
+      void (async () => {
+        if (!(await loadDoc(to))) {
+          const doc = await loadDoc(from);
+          if (doc) await saveDoc({ ...doc, id: to });
+        }
+        await forgetDoc(from);
+      })();
+    }
+    return true;
+  },
 
   shelve: (id, patch) => set((st) => ({ library: st.library.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
 
