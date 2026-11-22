@@ -130,11 +130,24 @@ function stable(v: unknown): string {
   return JSON.stringify(v) ?? "null";
 }
 
+/** Store entities are immutable, so an entity's key can be reused between pushes. */
+const stableCache = new WeakMap<object, string>();
+function stableCached(v: unknown): string {
+  if (v && typeof v === "object") {
+    const hit = stableCache.get(v);
+    if (hit !== undefined) return hit;
+    const key = stable(v);
+    stableCache.set(v, key);
+    return key;
+  }
+  return stable(v);
+}
+
 function snapshot(): Snapshot {
   const st = useStore.getState();
   const entities = Object.fromEntries(COLLECTIONS.map((c) => [c, new Map<string, Entity>()])) as Snapshot["entities"];
   const busy = new Set<string>();
-  const put = (c: Collection, id: string, articleId: string, data: unknown) => entities[c].set(id, { articleId, data, key: stable(data) });
+  const put = (c: Collection, id: string, articleId: string, data: unknown) => entities[c].set(id, { articleId, data, key: stableCached(data) });
 
   for (const item of st.library) put("articles", item.id, item.id, item);
   for (const [aid, list] of Object.entries(st.highlights)) for (const h of list) put("highlights", h.id, aid, h);
@@ -233,7 +246,7 @@ export function startSync(userId: string) {
           }
         }
         if (!row) continue;
-        rows.push({ c, row, key: stable(row.data), size: JSON.stringify(row).length });
+        rows.push({ c, row, key: stableCached(row.data), size: JSON.stringify(row).length });
       }
       for (const [id, [, articleId]] of Object.entries(seen)) {
         if (entities[c].has(id) || busy.has(`${c}:${id}`)) continue;
