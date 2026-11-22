@@ -88,6 +88,8 @@ export type LibraryItem = {
   image?: string;
   /** A painted cover: a bundled one by path, or "painted" for one made for this text. */
   cover?: string;
+  /** When the text itself last changed on the account, so other devices refresh their copy. */
+  docAt?: number;
   favorite?: boolean;
   /** When it was first read to the end. */
   finishedAt?: number;
@@ -395,6 +397,7 @@ export const useStore = create<State>((set, get) => ({
           tags: [...new Set([...(canonical.tags ?? []), ...(duplicate.tags ?? [])])],
           favorite: Boolean(canonical.favorite || duplicate.favorite),
           cover: canonical.cover ?? duplicate.cover,
+          docAt: Math.max(canonical.docAt ?? 0, duplicate.docAt ?? 0) || undefined,
           image: canonical.image ?? duplicate.image,
           dek: canonical.dek ?? duplicate.dek,
           year: canonical.year ?? duplicate.year,

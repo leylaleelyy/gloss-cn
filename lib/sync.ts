@@ -36,13 +36,13 @@ type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-const BASELINE_VERSION = 3;
-type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1]>> };
+const BASELINE_VERSION = 4;
+type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1, docAt?: number]>> };
 type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown };
 
 /** Pushes are split to stay well under the 4.5MB request cap. */
 const BATCH_BYTES = 1_500_000;
-const MAX_BODY = 4_300_000;
+const MAX_BODY = 15_000_000;
 /** A stalled request must not leave the badge on "Syncing" forever. */
 const PULL_TIMEOUT = 30_000;
 const PUSH_TIMEOUT = 120_000;
@@ -58,6 +58,10 @@ function packDoc(doc: Article): unknown {
 }
 
 /** Text-only fallback for an EPUB whose embedded pictures alone exceed a D1 row. */
+function hasEmbeddedImages(doc: Article): boolean {
+  return Boolean(doc.image?.startsWith("data:") || doc.blocks.some((block) => block.src?.startsWith("data:")));
+}
+
 function withoutEmbeddedImages(doc: Article): Article {
   return {
     ...doc,
@@ -66,7 +70,7 @@ function withoutEmbeddedImages(doc: Article): Article {
   };
 }
 
-const MAX_DOC_ROW = 1_800_000;
+const MAX_DOC_ROW = 8_000_000;
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
@@ -140,10 +144,12 @@ const emptyBaseline = (): Baseline => ({ version: BASELINE_VERSION, since: null,
 export function startSync(userId: string) {
   const storeKey = `gloss:sync:${userId}`;
   let base: Baseline = emptyBaseline();
+  let repackImages = false;
   try {
     const raw = localStorage.getItem(storeKey);
     if (raw) {
       const saved = JSON.parse(raw) as Partial<Baseline>;
+      repackImages = saved.version !== BASELINE_VERSION;
       if (saved.version === BASELINE_VERSION) {
         // A baseline from an older build may know fewer collections. Fill every
         // collection in, or the first push of a newly synced one reads undefined.
@@ -154,8 +160,8 @@ export function startSync(userId: string) {
           seen: Object.fromEntries(COLLECTIONS.map((c) => [c, saved.seen?.[c] ?? empty.seen[c]])) as Baseline["seen"],
         };
       }
-    }
-  } catch {}
+    } else repackImages = true;
+  } catch { repackImages = true; }
   const save = () => {
     try {
       localStorage.setItem(storeKey, JSON.stringify(base));
@@ -184,15 +190,17 @@ export function startSync(userId: string) {
         // Samples ship with the app. A text already on the shelf still uploads a missing document.
         if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
           const doc = await loadDoc(id);
-          if (doc && (row || !seenEntry?.[2])) {
+          const needsRepack = Boolean(doc && repackImages && hasEmbeddedImages(doc) && !seenEntry?.[3]);
+          if (doc && (row || !seenEntry?.[2] || needsRepack)) {
             row ??= { id, articleId: e.articleId, data: e.data };
+            row.data = { ...(e.data as Record<string, unknown>), docAt: Date.now() };
             let packed = packDoc(doc);
             if (JSON.stringify(packed).length > MAX_DOC_ROW) packed = packDoc(withoutEmbeddedImages(doc));
             row.doc = packed;
           }
         }
         if (!row) continue;
-        rows.push({ c, row, key: e.key, size: JSON.stringify(row).length });
+        rows.push({ c, row, key: stable(row.data), size: JSON.stringify(row).length });
       }
       for (const [id, [, articleId]] of Object.entries(seen)) {
         if (entities[c].has(id) || busy.has(`${c}:${id}`)) continue;
@@ -240,7 +248,9 @@ export function startSync(userId: string) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
         else {
           const previous = base.seen[r.c][r.row.id];
-          base.seen[r.c][r.row.id] = [r.key, r.row.articleId, r.c === "articles" && r.row.doc !== undefined ? 1 : previous?.[2]];
+          const docAt = r.c === "articles" ? (r.row.data as { docAt?: number }).docAt : undefined;
+          base.seen[r.c][r.row.id] = [r.key, r.row.articleId, r.c === "articles" && r.row.doc !== undefined ? 1 : previous?.[2], docAt ?? previous?.[3]];
+          if (r.c === "articles" && docAt) useStore.getState().shelve(r.row.id, { docAt });
         }
       }
       clearArticleDeletions(batch.filter((r) => r.c === "articles" && r.row.deleted).map((r) => r.row.id));
@@ -274,6 +284,9 @@ export function startSync(userId: string) {
     // A text replaced on another device: drop this device's copy so it is fetched fresh on open.
     for (const r of changes.articles ?? []) {
       const before = base.seen.articles[r.id];
+      const localDocAt = useStore.getState().library.find((item) => item.id === r.id)?.docAt;
+      const remoteDocAt = (r.data as { docAt?: number } | null)?.docAt;
+      if (!r.deleted && remoteDocAt && remoteDocAt !== localDocAt) void forgetDoc(r.id);
       if (!r.deleted && r.data && before && (r.data as { rev?: number }).rev !== undefined && stable(r.data) !== before[0]) void forgetDoc(r.id);
       // Removed on another device: its painted cover goes from this one too.
       if (r.deleted) void forgetCover(r.id);
@@ -288,7 +301,7 @@ export function startSync(userId: string) {
       for (const r of changes[c] ?? []) {
         const e = entities[c].get(r.id);
         if (r.deleted) delete base.seen[c][r.id];
-        else if (e) base.seen[c][r.id] = [e.key, e.articleId, c === "articles" ? (r.hasDoc ? 1 : 0) : undefined];
+        else if (e) base.seen[c][r.id] = [e.key, e.articleId, c === "articles" ? (r.hasDoc ? 1 : 0) : undefined, c === "articles" ? (r.data as { docAt?: number } | null)?.docAt : undefined];
       }
     }
     base.since = now;

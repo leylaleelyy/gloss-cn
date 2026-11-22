@@ -4,7 +4,7 @@ import { isCollection, pullRows, pushRows, type Collection, type PushRow } from 
 export const runtime = "nodejs";
 
 /** Vercel caps a request body at 4.5MB; the client batches below this. */
-const MAX_BODY = 4_400_000;
+const MAX_BODY = 15_000_000;
 const MAX_ROWS = 2000;
 const MAX_DATA = 256_000;
 
