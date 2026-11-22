@@ -2292,3 +2292,10 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .vocab-page { padding-inline: 32px; }
 }
 .vocab-page blockquote p { margin: 0; }
+
+/* Long books: let the browser skip layout and paint for distant unmarked paragraphs.
+   Marked paragraphs stay laid out so margin cards never lose their anchor position. */
+.prose-read.is-long .blk:not([data-marked]) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 110px;
+}

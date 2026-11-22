@@ -195,9 +195,30 @@ function ReaderInner({ article }: { article: Article }) {
         setPeekState(null);
       });
     }
-    const top = el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.28;
-    const far = Math.abs(top - window.scrollY) > window.innerHeight * 3;
+    const targetY = window.innerHeight * 0.28;
+    const isLong = Boolean(el.closest(".prose-read.is-long"));
+    const pre = el.getBoundingClientRect().top;
+    const far = Math.abs(pre - targetY) > window.innerHeight * 3;
+    // Measure the neighbourhood around the destination before jumping, so distant
+    // blocks in a long book already have their real heights on the first scroll.
+    const pinned: HTMLElement[] = [];
+    if (far && isLong) {
+      let cur: Element | null = el;
+      for (let i = 0; i < 18 && cur; i++, cur = cur.previousElementSibling) pinned.push(cur as HTMLElement);
+      cur = el.nextElementSibling;
+      for (let i = 0; i < 18 && cur; i++, cur = cur.nextElementSibling) pinned.push(cur as HTMLElement);
+      for (const node of pinned) node.style.contentVisibility = "visible";
+    }
+    const top = el.getBoundingClientRect().top + window.scrollY - targetY;
     window.scrollTo({ top: Math.max(0, top), behavior: far ? "instant" : readingScrollBehavior() });
+    if (pinned.length) {
+      requestAnimationFrame(() => {
+        if (!el.isConnected) return;
+        const delta = el.getBoundingClientRect().top - targetY;
+        if (Math.abs(delta) > 1) window.scrollTo({ top: Math.max(0, window.scrollY + delta), behavior: "instant" });
+        setTimeout(() => { for (const node of pinned) node.style.removeProperty("content-visibility"); }, 400);
+      });
+    }
     if (opts?.flash !== false) {
       el.classList.remove("is-flash");
       void el.offsetWidth;
@@ -411,11 +432,8 @@ function ReaderInner({ article }: { article: Article }) {
     const p = useStore.getState().progress[articleId];
     const n = p ? ix.numbers.get(p.block) : undefined;
     if (p && n && n > 2 && p.pct < 0.98) {
-      {
-        const el = blockEl(p.block);
-        if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.28, behavior: "instant" });
-        setToast({ kind: "resume", n });
-      }
+      jumpToBlock(p.block, { flash: false });
+      setToast({ kind: "resume", n });
     } else {
       try {
         // Wide screens already carry the hint in the empty margin.
@@ -651,7 +669,7 @@ function ReaderInner({ article }: { article: Article }) {
                 </div>
               </header>
 
-              <div ref={setArticleEl} className="prose-read" onClick={onTextClick} onMouseOver={onTextOver} onMouseLeave={() => setUI({ hoverGloss: null })}>
+              <div ref={setArticleEl} className={`prose-read${article.blocks.length > 400 ? " is-long" : ""}`} onClick={onTextClick} onMouseOver={onTextOver} onMouseLeave={() => setUI({ hoverGloss: null })}>
                 {renderedBlocks}
               </div>
 

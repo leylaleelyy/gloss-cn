@@ -207,6 +207,7 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
       data-block={block.id}
       data-type={block.type}
       data-n={n}
+      data-marked={marks.length || hasAt || cursor ? "" : undefined}
     >
       {n !== undefined && (
         <button
