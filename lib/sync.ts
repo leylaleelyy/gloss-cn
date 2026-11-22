@@ -90,7 +90,7 @@ async function uploadDoc(articleId: string, packed: unknown): Promise<unknown> {
   if (gz.length <= MAX_INLINE_DOC) return packed;
   const total = Math.ceil(gz.length / DOC_CHUNK);
   const uploadId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  for (let seq = 0; seq < total; seq++) {
+  const send = async (seq: number) => {
     const data = gz.slice(seq * DOC_CHUNK, (seq + 1) * DOC_CHUNK);
     const res = await fetchWithTimeout(
       `/api/articles/${encodeURIComponent(articleId)}/doc`,
@@ -99,6 +99,10 @@ async function uploadDoc(articleId: string, packed: unknown): Promise<unknown> {
     );
     if (res.status === 401) expireGoogleCredential();
     if (!res.ok) throw new Error(`doc ${res.status}`);
+  };
+  // Chunks are independent; a few in flight makes a large EPUB sync much faster.
+  for (let seq = 0; seq < total; seq += 4) {
+    await Promise.all(Array.from({ length: Math.min(4, total - seq) }, (_, i) => send(seq + i)));
   }
   return { __chunked: true, uploadId };
 }
