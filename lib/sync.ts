@@ -26,6 +26,7 @@ import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
 import { googleAuthHeaders, signOutGoogle } from "./google-auth";
 import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
+import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
 import { SYNCED_SETTING_KEYS } from "./settings";
 
 const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning", "settings"] as const;
@@ -33,7 +34,8 @@ type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-type Baseline = { since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string]>> };
+const BASELINE_VERSION = 2;
+type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string]>> };
 type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: Article };
 
 /** Pushes are split to stay well under the 4.5MB request cap. */
@@ -110,7 +112,7 @@ export function watchShelf(): () => void {
   };
 }
 
-const emptyBaseline = (): Baseline => ({ since: null, seen: Object.fromEntries(COLLECTIONS.map((c) => [c, {}])) as Baseline["seen"] });
+const emptyBaseline = (): Baseline => ({ version: BASELINE_VERSION, since: null, seen: Object.fromEntries(COLLECTIONS.map((c) => [c, {}])) as Baseline["seen"] });
 
 export function startSync(userId: string) {
   const storeKey = `gloss:sync:${userId}`;
@@ -119,13 +121,16 @@ export function startSync(userId: string) {
     const raw = localStorage.getItem(storeKey);
     if (raw) {
       const saved = JSON.parse(raw) as Partial<Baseline>;
-      // A baseline from an older build may know fewer collections. Fill every
-      // collection in, or the first push of a newly synced one reads undefined.
-      const empty = emptyBaseline();
-      base = {
-        since: saved.since ?? null,
-        seen: Object.fromEntries(COLLECTIONS.map((c) => [c, saved.seen?.[c] ?? empty.seen[c]])) as Baseline["seen"],
-      };
+      if (saved.version === BASELINE_VERSION) {
+        // A baseline from an older build may know fewer collections. Fill every
+        // collection in, or the first push of a newly synced one reads undefined.
+        const empty = emptyBaseline();
+        base = {
+          version: BASELINE_VERSION,
+          since: saved.since ?? null,
+          seen: Object.fromEntries(COLLECTIONS.map((c) => [c, saved.seen?.[c] ?? empty.seen[c]])) as Baseline["seen"],
+        };
+      }
     }
   } catch {}
   const save = () => {
@@ -143,6 +148,7 @@ export function startSync(userId: string) {
     setSyncStatus("syncing");
     try {
     const { entities, busy } = snapshot();
+    const pendingDeletes = pendingArticleDeletions();
     const rows: { c: Collection; row: OutRow; key: string | null; size: number }[] = [];
     for (const c of COLLECTIONS) {
       const seen = base.seen[c];
@@ -159,10 +165,14 @@ export function startSync(userId: string) {
       }
       for (const [id, [, articleId]] of Object.entries(seen)) {
         if (entities[c].has(id) || busy.has(`${c}:${id}`)) continue;
+        // Only books the reader actually removed become tombstones. A shelf that
+        // failed to load must never wipe the account's library.
+        if (c === "articles" && !pendingDeletes.has(id)) continue;
         rows.push({ c, row: { id, articleId, data: {}, deleted: true }, key: null, size: id.length + articleId.length + 64 });
       }
     }
     if (!rows.length) {
+      clearArticleDeletions(pendingDeletes);
       setSyncStatus("synced");
       return;
     }
@@ -188,6 +198,7 @@ export function startSync(userId: string) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
         else base.seen[r.c][r.row.id] = [r.key, r.row.articleId];
       }
+      clearArticleDeletions(batch.filter((r) => r.c === "articles" && r.row.deleted).map((r) => r.row.id));
       save();
       batch = [];
       bytes = 0;
@@ -198,6 +209,7 @@ export function startSync(userId: string) {
       bytes += r.size;
     }
     await flush();
+    clearArticleDeletions(pendingDeletes);
     setSyncStatus("synced");
     } catch (error) {
       setSyncStatus("error", error instanceof Error ? error.message : "Sync failed");

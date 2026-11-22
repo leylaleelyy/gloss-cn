@@ -7,6 +7,7 @@ import type { Article, BriefData } from "./article";
 import { modelOf, type ModelKey, type Source, type Usage } from "./models";
 import { responseLanguage } from "./response-language";
 import { libraryKey } from "./dedupe";
+import { markArticleDeleted } from "./sync-deletions";
 import { DEFAULT_SETTINGS, SETTINGS_KEY, type Marker, type Settings } from "./settings";
 import { isUILanguage } from "./ui-lang";
 
@@ -385,6 +386,7 @@ export const useStore = create<State>((set, get) => ({
       let canonical = { ...group[0] };
       for (const duplicate of group.slice(1)) {
         docs.push([duplicate.id, canonical.id]);
+        markArticleDeleted(duplicate.id);
         canonical = {
           ...canonical,
           addedAt: Math.min(canonical.addedAt, duplicate.addedAt),
@@ -449,6 +451,7 @@ export const useStore = create<State>((set, get) => ({
   shelve: (id, patch) => set((st) => ({ library: st.library.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
 
   removeFromLibrary: (id) => {
+    markArticleDeleted(id);
     void dropDoc(id);
     set((st) => ({ library: st.library.filter((x) => x.id !== id) }));
   },
