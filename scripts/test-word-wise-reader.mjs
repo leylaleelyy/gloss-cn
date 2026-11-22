@@ -21,7 +21,7 @@ window.releaseWise=false;window.wiseWaiters=[];window.learnCalls=[];window.worke
 const NativeWorker=window.Worker;window.Worker=class extends NativeWorker {constructor(...args){super(...args);window.workerCount++}};
 const originalFetch=window.fetch;
 window.fetch=(url,opts)=>{
- if(String(url).includes('/api/word-wise'))return new Promise(resolve=>{const answer=()=>resolve(Response.json({words:[{word:'intricate',meaning:'complex'},{word:'obscure',meaning:'unclear'}]}));if(window.releaseWise)answer();else window.wiseWaiters.push(answer)});
+ if(String(url).includes('/api/word-wise'))return new Promise(resolve=>{const words=[{word:'intricate',meaning:'complex'},{word:'obscure',meaning:'unclear'}];const answer=()=>{const body=JSON.parse(opts.body);resolve(Response.json(Array.isArray(body.texts)?{passages:body.texts.map(()=>words)}:{words}))};if(window.releaseWise)answer();else window.wiseWaiters.push(answer)});
  if(String(url).includes('/api/learn')){const body=JSON.parse(opts.body);learnCalls.push(body);return Promise.resolve(Response.json({data:{word:body.text,partOfSpeech:'adjective',pronunciation:'/test/',english:'made of many connected details',native:'复杂的；由许多细节构成的'}}))}
  return originalFetch(url,opts);
 };`});

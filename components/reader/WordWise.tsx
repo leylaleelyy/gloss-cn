@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { useLearning, setLearning } from '@/lib/learning-store';
 import { LEVELS } from '@/lib/learning';
 import { readProvider } from '@/lib/provider-config';
-import { loadWiseWords } from '@/lib/word-wise-source';
+import { loadWiseWords, loadWiseWordsBatch } from '@/lib/word-wise-source';
 import { type WiseWord } from '@/lib/word-wise';
 import { useReader } from './context';
 import { BookA, ChevronDown, Check, LoaderCircle, AlertCircle } from 'lucide-react';
@@ -109,34 +109,48 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
       const hints = await computer.hints(text, words, controller.signal);
       if (!stopped) setWiseHints(id, hints);
     };
+    const BATCH = 4;
+    const cacheKey = async (text: string) => {
+      const provider = readProvider();
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`v4:${provider.baseUrl}:${provider.model}:${prefs.level}:${text}`));
+      return new URL('/__word-wise/' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join(''), location.origin).href;
+    };
     const pump = async () => {
       if (stopped || busy) return;
       // Let touch scrolling settle before updating text layout. Fetch nearby text first.
       if (performance.now() - lastScroll < 120) { timer = setTimeout(pump, 120); return; }
       const center = window.scrollY + window.innerHeight / 2;
-      const id = [...visible].filter(id => !done.has(id)).sort((a, b) => Math.abs((positions.get(a) ?? center) - center) - Math.abs((positions.get(b) ?? center) - center))[0];
-      if (!id) return;
-      const block = blocks.get(id); if (!block) return;
-      done.add(id); busy = true;
-      const fullText = block.runs.map(r => r.text).join('');
-      const part = progress.get(id) ?? { offset: 0, words: [] };
-      let end = Math.min(fullText.length, part.offset + 5000);
-      if (end < fullText.length) { const boundary = fullText.lastIndexOf(' ', end); if (boundary > part.offset) end = boundary; }
-      const text = fullText.slice(part.offset, end);
+      const ids = [...visible].filter(id => !done.has(id)).sort((a, b) => Math.abs((positions.get(a) ?? center) - center) - Math.abs((positions.get(b) ?? center) - center)).slice(0, BATCH);
+      if (!ids.length) return;
+      const jobs = ids.flatMap(id => {
+        const block = blocks.get(id); if (!block) return [];
+        const fullText = block.runs.map(r => r.text).join('');
+        const part = progress.get(id) ?? { offset: 0, words: [] };
+        let end = Math.min(fullText.length, part.offset + 5000);
+        if (end < fullText.length) { const boundary = fullText.lastIndexOf(' ', end); if (boundary > part.offset) end = boundary; }
+        return [{ id, fullText, part, end, text: fullText.slice(part.offset, end) }];
+      });
+      if (!jobs.length) return;
+      for (const job of jobs) done.add(job.id);
+      busy = true;
       try {
-        await apply(id, fullText, part.words);
-        if (/[a-zA-Z]{3}/.test(text)) {
-          const provider = readProvider();
-          const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`v4:${provider.baseUrl}:${provider.model}:${prefs.level}:${text}`));
-          const url = new URL('/__word-wise/' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join(''), location.origin).href;
-          const words = await loadWiseWords(url, text, prefs.level, controller.signal, !failed, () => useWise.setState({ loading: true }));
+        for (const job of jobs) await apply(job.id, job.fullText, job.part.words);
+        const needs = jobs.filter(job => /[a-zA-Z]{3}/.test(job.text));
+        const items = await Promise.all(needs.map(async job => ({ ...job, key: await cacheKey(job.text) })));
+        if (items.length) {
+          const found = await loadWiseWordsBatch(items.map(({ key, text }) => ({ key, text })), prefs.level, controller.signal, !failed, () => useWise.setState({ loading: true }));
           if (stopped) return;
-          if (words !== undefined) {
-            part.words.push(...words);
-            await apply(id, fullText, part.words);
+          for (const job of items) {
+            const words = found.get(job.key);
+            if (words !== undefined) {
+              job.part.words.push(...words);
+              await apply(job.id, job.fullText, job.part.words);
+            }
           }
         }
-        if (end < fullText.length) { progress.set(id, { offset: end, words: part.words }); done.delete(id); }
+        for (const job of jobs) {
+          if (job.end < job.fullText.length) { progress.set(job.id, { offset: job.end, words: job.part.words }); done.delete(job.id); }
+        }
       } catch (e) { if (!stopped) { failed = true; useWise.setState({ error: e instanceof Error ? e.message : '释义生成失败' }); } }
       finally { busy = false; if (!stopped) { useWise.setState({ loading: false }); timer = setTimeout(pump, 40); } }
     };
