@@ -14,6 +14,7 @@ import { observeInlineWiseHints } from '@/lib/word-wise-layout';
 import { startGloss } from '@/lib/ask';
 import { useStore } from '@/lib/store';
 import { Popover, barBtn } from '@/components/ui/Popover';
+import { useI18n } from '@/lib/ui-lang';
 const useWise = create<{ error: string; loading: boolean }>(() => ({ error: '', loading: false }));
 const serverHints = () => undefined;
 export function useWiseHints(id: string) {
@@ -23,27 +24,28 @@ export function WordWiseControl() {
   const p = useLearning(s => s.preferences);
   const error = useWise(s => s.error);
   const loading = useWise(s => s.loading);
-  const descriptions = ['入门 · 基础词汇', '初级 · 日常表达', '中级 · 独立阅读', '中高级 · 复杂文章', '高级 · 专业表达', '精通 · 仅罕见词'];
+  const { t } = useI18n();
+  const descriptions = t('wordwise.levels').split('|');
   return <div className="word-wise-controls flex shrink-0 items-center">
-    <button type="button" className={`${barBtn} word-wise-toggle`} aria-label="Word Wise" aria-pressed={p.wordWise}
-      data-tip={p.wordWise ? '关闭 Word Wise' : '开启 Word Wise'} onClick={() => setLearning({ wordWise: !p.wordWise })}>
+    <button type="button" className={`${barBtn} word-wise-toggle`} aria-label={t('wordwise.label')} aria-pressed={p.wordWise}
+      data-tip={p.wordWise ? t('wordwise.off') : t('wordwise.on')} onClick={() => setLearning({ wordWise: !p.wordWise })}>
       {loading ? <LoaderCircle size={18} className="animate-spin" aria-hidden /> : error && p.wordWise ? <AlertCircle size={18} aria-hidden /> : <Languages size={18} strokeWidth={1.8} aria-hidden />}
-      <span className="toolbar-label">Word Wise</span>
+      <span className="toolbar-label">{t('wordwise.label')}</span>
     </button>
-    {p.wordWise && <Popover label="Word Wise 英语等级" tip="英语等级" triggerClass={`${barBtn} word-wise-level`} width={288}
+    {p.wordWise && <Popover label={t('wordwise.levelLabel')} tip={t('wordwise.levelTip')} triggerClass={`${barBtn} word-wise-level`} width={288}
       trigger={<><span className="tabular-nums text-xs">{p.level}</span><ChevronDown size={12} aria-hidden /></>}>
       {close => <div>
-        <p className="text-sm font-medium text-ink">英语等级</p>
-        <p className="mt-1 mb-3 text-xs leading-relaxed text-ink-3">行内显示简单近义词；点词打开 Dictionary。短注释不改变词宽或行距，放不下时仅标记单词。</p>
-        <div role="group" aria-label="选择英语等级" className="grid gap-1">
+        <p className="text-sm font-medium text-ink">{t('wordwise.levelTip')}</p>
+        <p className="mt-1 mb-3 text-xs leading-relaxed text-ink-3">{t('wordwise.help')}</p>
+        <div role="group" aria-label={t('wordwise.group')} className="grid gap-1">
           {LEVELS.map((level, i) => <button key={level} type="button" aria-pressed={p.level === level}
             className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left transition-colors ${p.level === level ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk'}`}
             onClick={() => { setLearning({ level }); close(); }}>
             <span className="w-6 text-sm font-medium tabular-nums">{level}</span><span className="flex-1 text-xs">{descriptions[i]}</span>{p.level === level && <Check size={16} className="text-rubric" aria-hidden />}
           </button>)}
         </div>
-        {loading && <p role="status" className="mt-3 text-xs text-ink-3">正在生成附近段落的释义…</p>}
-        {error && <div role="status" className="mt-3 border-t border-rule pt-3"><p className="text-xs leading-relaxed text-ink-3">{error}</p><button type="button" className="mt-2 text-xs font-medium text-rubric" onClick={() => window.dispatchEvent(new Event('gloss:provider'))}>重新生成释义</button></div>}
+        {loading && <p role="status" className="mt-3 text-xs text-ink-3">{t('wordwise.generating')}</p>}
+        {error && <div role="status" className="mt-3 border-t border-rule pt-3"><p className="text-xs leading-relaxed text-ink-3">{error}</p><button type="button" className="mt-2 text-xs font-medium text-rubric" onClick={() => window.dispatchEvent(new Event('gloss:provider'))}>{t('wordwise.retry')}</button></div>}
       </div>}
     </Popover>}
   </div>;

@@ -8,6 +8,7 @@ import { LearningPreferences } from "@/components/reader/LearningPreferences";
 import { RESPONSE_LANGUAGES, responseLanguage } from "@/lib/response-language";
 import { BOOK_KEYS, bookSettingsSnapshot, readingBook, saveBookSettings, applySettings, DEFAULT_SETTINGS, FACES, MARKERS, PENS, resolveTheme, THEMES, type Settings } from "@/lib/settings";
 import { useStore } from "@/lib/store";
+import { useI18n } from "@/lib/ui-lang";
 import { Popover, barBtn } from "./Popover";
 
 function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: { key: T; label: ReactNode }[]; onChange: (v: T) => void; label: string }) {
@@ -110,6 +111,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   const settings: Settings = { ...globalSettings, ...JSON.parse(saved) };
   const [fontError, setFontError] = useState("");
   const setSettings = useStore((s) => s.setSettings);
+  const { t } = useI18n();
   const focusMode = useStore((s) => s.focusMode);
   const setUI = useStore((s) => s.setUI);
   const [tab, setTab] = useState<"look" | "text" | "answers">("look");
@@ -119,7 +121,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
       const local = Object.fromEntries(Object.entries(patch).filter(([key]) => BOOK_KEYS.includes(key as typeof BOOK_KEYS[number])));
       const rest = Object.fromEntries(Object.entries(patch).filter(([key]) => !BOOK_KEYS.includes(key as typeof BOOK_KEYS[number])));
       try { if (Object.keys(local).length) saveBookSettings(bookId, local); setFontError(""); }
-      catch { setFontError("无法保存本书阅读设置，请检查存储空间。"); return; }
+      catch { setFontError(t("settings.saveError")); return; }
       if (Object.keys(rest).length) setSettings(rest);
     } else setSettings(patch);
     applySettings({ ...useStore.getState().settings });
@@ -174,19 +176,19 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <Popover label="Appearance and answers" tip="Appearance" width={compact ? 308 : 332} triggerClass={barBtn} trigger={<><Paintbrush size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Appearance</span></>}>
+    <Popover label={t("settings.title")} tip={t("settings.tip")} width={compact ? 308 : 332} triggerClass={barBtn} trigger={<><Paintbrush size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">{t("settings.tip")}</span></>}>
       {() => (
         <div className="appearance-settings">
           {!compact && (
             <div className="mb-3 w-full">
               <Seg
-                label="Settings section"
+                label={t("settings.title")}
                 value={tab}
                 onChange={setTab}
                 options={[
-                  { key: "look", label: "Look" },
-                  { key: "text", label: "Text" },
-                  { key: "answers", label: "Answers" },
+                  { key: "look", label: t("settings.look") },
+                  { key: "text", label: t("settings.text") },
+                  { key: "answers", label: t("settings.answers") },
                 ]}
               />
             </div>
@@ -195,25 +197,25 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {(compact || tab === "look") && (
             <div className="space-y-3">
               <div>
-                <p className="mb-2 text-[12px] text-ink-3">Theme</p>
+                <p className="mb-2 text-[12px] text-ink-3">{t("settings.theme")}</p>
                 <div className="grid grid-cols-6 gap-1.5">
-                  {THEMES.map((t) => (
+                  {THEMES.map((theme) => (
                     <button
-                      key={t.key}
+                      key={theme.key}
                       type="button"
-                      onClick={(e) => pickTheme(t.key, e)}
-                      aria-pressed={settings.theme === t.key}
-                      data-tip={t.key === "auto" ? "Follows your system" : undefined}
+                      onClick={(e) => pickTheme(theme.key, e)}
+                      aria-pressed={settings.theme === theme.key}
+                      data-tip={theme.key === "auto" ? t("settings.themeAuto") : undefined}
                       className="group flex min-w-0 flex-col items-center gap-1.5 rounded-md focus-visible:outline-offset-4"
                     >
-                      <Swatch theme={t} on={settings.theme === t.key} />
-                      <span className={`text-[11px] leading-none transition-colors ${settings.theme === t.key ? "font-medium text-ink" : "text-ink-3 group-hover:text-ink-2"}`}>{t.label}</span>
+                      <Swatch theme={theme} on={settings.theme === theme.key} />
+                      <span className={`text-[11px] leading-none transition-colors ${settings.theme === theme.key ? "font-medium text-ink" : "text-ink-3 group-hover:text-ink-2"}`}>{theme.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <Row label="Pen">
+              <Row label={t("settings.pen")}>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {PENS.map((p) => (
                     <button
@@ -234,7 +236,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
 
               {!compact && (
                 <>
-                  <Row label="Highlighter">
+                  <Row label={t("settings.highlighter")}>
                     <div className="flex min-w-0 items-center gap-1.5">
                       {MARKERS.map((m) => (
                         <button
@@ -253,10 +255,10 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                     </div>
                   </Row>
                   <div className="grid grid-cols-4 gap-1 border-t border-rule pt-3">
-                    <Chip label="Numbers" icon={<Pilcrow size={12} />} on={settings.numbers} onChange={(v) => set({ numbers: v })} />
-                    <Chip label="Map" icon={<MapIcon size={12} />} on={settings.rail} onChange={(v) => set({ rail: v })} />
-                    <Chip label="Focus" icon={<Focus size={12} />} on={focusMode} onChange={(v) => setUI({ focusMode: v })} />
-                    <Chip label="Listen" icon={<Headphones size={12} />} on={settings.listen} onChange={(v) => set({ listen: v })} />
+                    <Chip label={t("settings.numbers")} icon={<Pilcrow size={12} />} on={settings.numbers} onChange={(v) => set({ numbers: v })} />
+                    <Chip label={t("settings.map")} icon={<MapIcon size={12} />} on={settings.rail} onChange={(v) => set({ rail: v })} />
+                    <Chip label={t("settings.focus")} icon={<Focus size={12} />} on={focusMode} onChange={(v) => setUI({ focusMode: v })} />
+                    <Chip label={t("settings.listen")} icon={<Headphones size={12} />} on={settings.listen} onChange={(v) => set({ listen: v })} />
                   </div>
                 </>
               )}
@@ -266,7 +268,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && tab === "text" && (
             <div className="space-y-3">
               <div>
-                <p className="mb-2 text-[12px] text-ink-3">Typeface{bookId ? " · 本书独立记忆" : " · 默认字体"}</p>
+                <p className="mb-2 text-[12px] text-ink-3">{t("settings.typeface")} · {bookId ? t("settings.perBook") : t("settings.defaultFont")}</p>
                 {fontError && <p role="alert" className="text-[12px] text-ink-2">{fontError}</p>}
                 <div className="grid grid-cols-3 gap-1.5">
                   {FACES.map((f) => (
@@ -287,9 +289,9 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   ))}
                 </div>
               </div>
-              <Row label="Size">
+              <Row label={t("settings.size")}>
                 <div className="text-size-controls flex items-center gap-1.5">
-                  <button type="button" aria-label="Smaller text" data-tip="Smaller" onClick={() => size(settings.size - 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
+                  <button type="button" aria-label={t("settings.smaller")} data-tip={t("settings.smaller")} onClick={() => size(settings.size - 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
                     <Minus size={14} />
                   </button>
                   <input
@@ -298,58 +300,58 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                     max={28}
                     value={settings.size}
                     onChange={(e) => size(Number(e.target.value))}
-                    aria-label="Text size"
+                    aria-label={t("settings.textSize")}
                     className="h-1 min-w-0 flex-1 accent-[var(--rubric)]"
                   />
-                  <button type="button" aria-label="Larger text" data-tip="Larger" onClick={() => size(settings.size + 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
+                  <button type="button" aria-label={t("settings.larger")} data-tip={t("settings.larger")} onClick={() => size(settings.size + 1)} className="grid size-7 place-items-center rounded-lg text-ink-2 transition-transform hover:bg-sunk active:scale-90">
                     <Plus size={14} />
                   </button>
-                  <output className="w-12 shrink-0 text-right text-[12px] tabular-nums text-ink-3" aria-label="Current text size">{settings.size} px</output>
+                  <output className="w-12 shrink-0 text-right text-[12px] tabular-nums text-ink-3" aria-label={t("settings.currentSize")}>{settings.size} px</output>
                 </div>
               </Row>
-              <Row label="Spacing">
+              <Row label={t("settings.spacing")}>
                 <Seg
-                  label="Line spacing"
+                  label={t("settings.lineSpacing")}
                   value={settings.leading}
                   onChange={(v) => set({ leading: v })}
                   options={[
-                    { key: "tight", label: "Snug" },
-                    { key: "normal", label: "Even" },
-                    { key: "loose", label: "Airy" },
+                    { key: "tight", label: t("settings.snug") },
+                    { key: "normal", label: t("settings.even") },
+                    { key: "loose", label: t("settings.airy") },
                   ]}
                 />
               </Row>
-              <Row label="Width">
+              <Row label={t("settings.width")}>
                 <Seg
-                  label="Column width"
+                  label={t("settings.columnWidth")}
                   value={settings.width}
                   onChange={(v) => set({ width: v })}
                   options={[
-                    { key: "narrow", label: "Narrow" },
-                    { key: "normal", label: "Even" },
-                    { key: "wide", label: "Wide" },
+                    { key: "narrow", label: t("settings.narrow") },
+                    { key: "normal", label: t("settings.even") },
+                    { key: "wide", label: t("settings.wide") },
                   ]}
                 />
               </Row>
-              <Row label="Align">
+              <Row label={t("settings.align")}>
                 <Seg
-                  label="Text alignment"
+                  label={t("settings.textAlign")}
                   value={settings.align}
                   onChange={(v) => set({ align: v })}
                   options={[
-                    { key: "left", label: <><AlignLeft size={13} /> Left</> },
-                    { key: "justify", label: <><AlignJustify size={13} /> Justified</> },
+                    { key: "left", label: <><AlignLeft size={13} /> {t("settings.left")}</> },
+                    { key: "justify", label: <><AlignJustify size={13} /> {t("settings.justified")}</> },
                   ]}
                 />
               </Row>
-              <Row label="Paragraphs">
+              <Row label={t("settings.paragraphs")}>
                 <Seg
-                  label="Paragraph style"
+                  label={t("settings.paragraphStyle")}
                   value={settings.paras}
                   onChange={(v) => set({ paras: v })}
                   options={[
-                    { key: "spaced", label: "Spaced" },
-                    { key: "indented", label: "Indented" },
+                    { key: "spaced", label: t("settings.spaced") },
+                    { key: "indented", label: t("settings.indented") },
                   ]}
                 />
               </Row>
@@ -368,7 +370,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
                   }
                   className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-3 transition-colors hover:text-ink"
                 >
-                  <RotateCcw size={12} /> Reset text settings
+                  <RotateCcw size={12} /> {t("settings.resetText")}
                 </button>
               )}
             </div>
@@ -377,25 +379,25 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && tab === "answers" && (
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-[12.5px] text-ink-3" htmlFor="response-language">Response language · 回答语言</label>
+                <label className="mb-2 block text-[12.5px] text-ink-3" htmlFor="response-language">{t("settings.responseLanguage")}</label>
                 <select id="response-language" value={responseLanguage(settings.responseLanguage)} onChange={(e) => set({ responseLanguage: responseLanguage(e.target.value) })} className="mb-2 h-8 w-full rounded-lg border border-rule bg-sunk px-2 text-[13px] text-ink">
                   {RESPONSE_LANGUAGES.map((language) => <option key={language.key} value={language.key}>{language.label}</option>)}
                 </select>
-                <p className="mb-4 text-[12px] leading-snug text-ink-4">Applies to new answers, learning cards and summaries. Existing notes keep their language.</p>
+                <p className="mb-4 text-[12px] leading-snug text-ink-4">{t("settings.responseHint")}</p>
                 <LearningPreferences />
-                <p className="mb-2 text-[12.5px] text-ink-3">Answer length</p>
+                <p className="mb-2 text-[12.5px] text-ink-3">{t("settings.answerLength")}</p>
                 <Seg
-                  label="Answer length"
+                  label={t("settings.answerLength")}
                   value={settings.length}
                   onChange={(v) => set({ length: v })}
                   options={[
-                    { key: "short", label: "Short" },
-                    { key: "normal", label: "Balanced" },
-                    { key: "long", label: "Detailed" },
+                    { key: "short", label: t("settings.short") },
+                    { key: "normal", label: t("settings.balanced") },
+                    { key: "long", label: t("settings.detailed") },
                   ]}
                 />
                 <p className="mt-2 text-[12px] leading-snug text-ink-4">
-                  {settings.length === "short" ? "A sentence or three." : settings.length === "long" ? "Room for nuance, up to a short paragraph or two." : "About a paragraph."}
+                  {settings.length === "short" ? t("settings.lengthShort") : settings.length === "long" ? t("settings.lengthLong") : t("settings.lengthNormal")}
                 </p>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { forwardRef } from "react";
 import { ChevronsDownUp, PenLine, Trash2 } from "lucide-react";
 import { MARKERS } from "@/lib/settings";
 import { useStore, type Highlight } from "@/lib/store";
+import { useI18n } from "@/lib/ui-lang";
 import { useReader } from "./context";
 import { marginStyle } from "./GlossCard";
 
@@ -29,6 +30,7 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
   ref
 ) {
   const { ix, jumpToBlock } = useReader();
+  const { t } = useI18n();
   const updateHighlight = useStore((s) => s.updateHighlight);
   const setUI = useStore((s) => s.setUI);
   const n = ix.numbers.get(note.anchor.start.b);
@@ -43,7 +45,7 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
       <article
         ref={ref}
         data-note={note.id}
-        aria-label={`Note${n ? ` on paragraph ${n}` : ""}. Open note.`}
+        aria-label={t("note.openAria", { para: n ? ` (${n})` : "" })}
         role="button"
         tabIndex={0}
         className={["gloss is-collapsed note-card", entering ? "is-entering" : ""].join(" ")}
@@ -57,7 +59,7 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
         }}
       >
         <div className="flex items-baseline gap-2">
-          <span className="shrink-0 text-[13.5px] font-medium leading-[1.4] text-ink">Note</span>
+          <span className="shrink-0 text-[13.5px] font-medium leading-[1.4] text-ink">{t("note.label")}</span>
           <span className="note-swatch" aria-hidden />
           {where && <span className="ml-auto shrink-0 text-[11px] tabular-nums text-ink-4">{where}</span>}
         </div>
@@ -70,12 +72,12 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
     <article
       ref={ref}
       data-note={note.id}
-      aria-label={`Note${n ? ` on paragraph ${n}` : ""}`}
+      aria-label={t("note.aria", { para: n ? ` (${n})` : "" })}
       className={["gloss gloss-margin note-card is-active", entering ? "is-entering" : ""].join(" ")}
       style={style}
     >
       <header className="mb-2 flex h-5 items-center gap-2 text-[12px] leading-none">
-        <span className="font-semibold text-rubric-text">Note</span>
+        <span className="font-semibold text-rubric-text">{t("note.label")}</span>
         <span className="note-swatch" aria-hidden />
         {where && (
           <button
@@ -85,16 +87,16 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
               e.stopPropagation();
               jumpToBlock(note.anchor.start.b, { remember: true });
             }}
-            aria-label={`Go to paragraph ${n}`}
-            data-tip="Show in the text"
+            aria-label={t("note.goToPara", { n: n ?? 0 })}
+            data-tip={t("note.showInText")}
           >
             {where}
           </button>
         )}
         <button
           type="button"
-          aria-label="Edit note"
-          data-tip="Edit note"
+          aria-label={t("note.edit")}
+          data-tip={t("note.edit")}
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
@@ -105,8 +107,8 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
         </button>
         <button
           type="button"
-          aria-label="Delete note"
-          data-tip="Delete note"
+          aria-label={t("note.delete")}
+          data-tip={t("note.delete")}
           onClick={(e) => {
             e.stopPropagation();
             updateHighlight(note.articleId, note.id, { note: undefined });
@@ -118,8 +120,8 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
         </button>
         <button
           type="button"
-          aria-label="Collapse note"
-          data-tip="Collapse"
+          aria-label={t("note.collapse")}
+          data-tip={t("note.collapseShort")}
           data-tip-kbd="Esc"
           onClick={(e) => {
             e.stopPropagation();
@@ -134,7 +136,7 @@ export const NoteCard = forwardRef<HTMLElement, Props>(function NoteCard(
       <button
         type="button"
         onClick={onEdit}
-        aria-label="Edit note"
+        aria-label={t("note.edit")}
         className="block w-full text-left"
       >
         <span className="mb-2.5 block line-clamp-2 border-l-2 border-[var(--note-c)] pl-2.5 font-serif text-[15px] leading-snug text-ink-3">

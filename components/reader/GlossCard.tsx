@@ -4,6 +4,7 @@ import { Show, SignInButton } from "@/components/account/Auth";
 import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, Check, ChevronsDownUp, Copy, CornerDownRight, RotateCcw, Square, Trash2 } from "lucide-react";
 import { ACTIONS } from "@/lib/actions";
+import { actionLabel, useI18n } from "@/lib/ui-lang";
 import { followUp, openKeyMenu, openRelatedGloss, retry, stopGloss } from "@/lib/ask";
 import { MODELS } from "@/lib/models";
 import { useStore, type Gloss, type Turn } from "@/lib/store";
@@ -80,33 +81,35 @@ export function marginStyle(top: number | undefined, fresh: boolean): CSSPropert
   };
 }
 
-function TurnBody({ t }: { t: Turn }) {
-  if (t.error && !t.content)
+function TurnBody({ t: turn }: { t: Turn }) {
+  const { t } = useI18n();
+  if (turn.error && !turn.content)
     return (
       <>
-        <p className="text-[13.5px] text-rubric-text">{t.error}</p>
-        {t.needKey && <KeyButton />}
+        <p className="text-[13.5px] text-rubric-text">{turn.error}</p>
+        {turn.needKey && <KeyButton />}
       </>
     );
-  if (t.streaming && !t.content)
+  if (turn.streaming && !turn.content)
     return (
       <>
-        {t.searching && <p className="mb-2 text-[12.5px] text-ink-3">Searching the web</p>}
+        {turn.searching && <p className="mb-2 text-[12.5px] text-ink-3">{t("gloss.searching")}</p>}
         <Writing />
       </>
     );
   return (
     <>
-      <Answer text={t.content} streaming={t.streaming} sources={t.sources} />
-      {t.truncated && <p className="mt-2 text-[12.5px] text-rubric-text">回答已达到模型输出上限，内容尚未完成。可在下方追问“继续”，接着讲解。</p>}
-      {t.error && <p className="mt-2 text-[12.5px] text-rubric-text">{t.error}</p>}
-      {!t.streaming && t.sources?.length ? <Sources sources={t.sources} /> : null}
+      <Answer text={turn.content} streaming={turn.streaming} sources={turn.sources} />
+      {turn.truncated && <p className="mt-2 text-[12.5px] text-rubric-text">{t("gloss.truncated")}</p>}
+      {turn.error && <p className="mt-2 text-[12.5px] text-rubric-text">{turn.error}</p>}
+      {!turn.streaming && turn.sources?.length ? <Sources sources={turn.sources} /> : null}
     </>
   );
 }
 
 export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ gloss, active, hover, entering, mini = false, variant, top, fresh = false, onActivate }, ref) {
   const { ix, jumpToBlock } = useReader();
+  const { lang, t } = useI18n();
   const removeGloss = useStore((s) => s.removeGloss);
   const setUI = useStore((s) => s.setUI);
   const [draft, setDraft] = useState("");
@@ -123,7 +126,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
   const blockId = gloss.anchor?.start.b ?? gloss.at;
   const n = blockId ? ix.numbers.get(blockId) : undefined;
   const nEnd = gloss.anchor ? ix.numbers.get(gloss.anchor.end.b) : undefined;
-  const label = gloss.imageBlock ? "图片讲解" : gloss.anchor ? ACTIONS[gloss.action].label : "Whole text";
+  const label = gloss.imageBlock ? "图片讲解" : gloss.anchor ? actionLabel(lang, gloss.action) : t("gloss.wholeText");
 
   useEffect(() => {
     if (entering) {
@@ -162,7 +165,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
         ref={ref}
         data-gloss={gloss.id}
         data-action={gloss.action}
-        aria-label={`${gloss.question ?? label}${n ? `, paragraph ${n}` : ""}. Open note.`}
+        aria-label={t("gloss.openAria", { label: gloss.question ?? label, n: n ? `, ¶${n}` : "" })}
         role="button"
         tabIndex={0}
         className={["gloss is-collapsed", mini ? "is-mini" : "", hover ? "is-hover" : "", entering ? "is-entering" : ""].join(" ")}
@@ -187,7 +190,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
             )}
           </p>
           {follow > 0 && (
-            <span className="shrink-0 text-[11px] tabular-nums text-ink-4" data-tip={`${follow} follow-up${follow > 1 ? "s" : ""}`}>
+            <span className="shrink-0 text-[11px] tabular-nums text-ink-4" data-tip={t(follow > 1 ? "gloss.followUpsPlural" : "gloss.followUps", { count: follow })}>
               +{follow}
             </span>
           )}
@@ -215,7 +218,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
       ref={ref}
       data-gloss={gloss.id}
       data-action={gloss.action}
-      aria-label={`${label} note${n ? ` on paragraph ${n}` : ""}`}
+      aria-label={t("gloss.openAria", { label, n: n ? `, ¶${n}` : "" })}
       className={[
         variant === "margin" ? "gloss gloss-margin" : "gloss !relative !transform-none",
         active ? "is-active" : "",
@@ -236,18 +239,18 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
               e.stopPropagation();
               if (blockId) jumpToBlock(blockId, { remember: true });
             }}
-            aria-label={`Go to paragraph ${n}`}
-            data-tip="Show in the text"
+            aria-label={t("gloss.goToPara", { n: n ?? 0 })}
+            data-tip={t("gloss.showInText")}
           >
             {where}
           </button>
         )}
-        {follow > 0 && <span className="text-ink-4">{`${follow} follow-up${follow > 1 ? "s" : ""}`}</span>}
+        {follow > 0 && <span className="text-ink-4">{t(follow > 1 ? "gloss.followUpsPlural" : "gloss.followUps", { count: follow })}</span>}
         {variant === "margin" && (
           <button
             type="button"
-            aria-label="Collapse note"
-            data-tip="Collapse"
+            aria-label={t("gloss.collapseAria")}
+            data-tip={t("gloss.collapse")}
             data-tip-kbd="Esc"
             onClick={(e) => {
               e.stopPropagation();
@@ -286,7 +289,7 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
         <>
           {gloss.anchor && ["explain", "simplify", "define"].includes(gloss.action) && <div className="related-reading-actions">
             {(["explain", "define", "simplify"] as const).filter(action => action !== gloss.action).map(action => <button key={action} type="button" className="related-reading-action" onClick={() => openRelatedGloss(ix, gloss, action)}>
-              {ACTIONS[action].label} this selection ↗
+              {actionLabel(lang, action)} this selection ↗
             </button>)}
           </div>}
           <footer className="mt-3 flex items-center gap-0.5 text-ink-3">
@@ -294,19 +297,19 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
               <Receipt t={last.role === "assistant" ? last : first} />
             </span>
             {busy ? (
-              <IconBtn label="Stop" onClick={() => stopGloss(gloss.id)}>
+              <IconBtn label={t("gloss.stop")} onClick={() => stopGloss(gloss.id)}>
                 <Square size={12} fill="currentColor" />
               </IconBtn>
             ) : (
               <>
-                <IconBtn label="Try again" onClick={() => retry(ix, gloss.id)}>
+                <IconBtn label={t("gloss.retry")} onClick={() => retry(ix, gloss.id)}>
                   <RotateCcw size={14} />
                 </IconBtn>
-                <IconBtn label={copied ? "Copied" : "Copy"} onClick={copy}>
+                <IconBtn label={copied ? t("gloss.copied") : t("gloss.copy")} onClick={copy}>
                   {copied ? <Check size={14} className="text-good" /> : <Copy size={14} />}
                 </IconBtn>
                 <IconBtn
-                  label="Delete"
+                  label={t("gloss.delete")}
                   onClick={() => {
                     stopGloss(gloss.id);
                     removeGloss(gloss.articleId, gloss.id);
@@ -335,15 +338,15 @@ export const GlossCard = forwardRef<HTMLElement, Props>(function GlossCard({ glo
                   inputRef.current?.blur();
                 }
               }}
-              placeholder="Ask a follow-up"
-              aria-label="Ask a follow-up"
+              placeholder={t("gloss.followUp")}
+              aria-label={t("gloss.followUpAria")}
               className="h-9 min-w-0 flex-1 bg-transparent text-[13.5px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-4"
             />
             <button
               type="submit"
               disabled={!draft.trim() || busy}
-              aria-label="Send follow-up"
-              data-tip="Send"
+              aria-label={t("gloss.sendFollowUp")}
+              data-tip={t("gloss.sendFollowUp")}
               data-tip-kbd={"\u21b5"}
               className="grid size-6 place-items-center rounded-md bg-ink text-bg transition-opacity disabled:opacity-20"
             >

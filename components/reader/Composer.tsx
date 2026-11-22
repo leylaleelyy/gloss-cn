@@ -5,6 +5,7 @@ import { ArrowUp } from "lucide-react";
 import { ARTICLE_QUESTIONS } from "@/lib/actions";
 import { startGloss } from "@/lib/ask";
 import { useReader } from "./context";
+import { useI18n } from "@/lib/ui-lang";
 import { WebSwitch } from "./WebSwitch";
 
 export type ComposerHandle = { focus: () => void };
@@ -18,6 +19,7 @@ export const Composer = forwardRef<ComposerHandle, { currentBlock: () => string 
   ref
 ) {
   const { ix } = useReader();
+  const { t } = useI18n();
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
@@ -92,8 +94,8 @@ export const Composer = forwardRef<ComposerHandle, { currentBlock: () => string 
               inputRef.current?.blur();
             }
           }}
-          placeholder="Ask about the whole text"
-          aria-label="Ask anything about the whole text"
+          placeholder={t("composer.placeholder")}
+          aria-label={t("composer.aria")}
           className="h-9 min-w-0 flex-1 bg-transparent text-[14.5px] text-ink outline-none focus-visible:outline-none placeholder:text-ink-3"
         />
         {!focused && !q && <kbd className="hidden sm:inline">/</kbd>}
@@ -101,8 +103,8 @@ export const Composer = forwardRef<ComposerHandle, { currentBlock: () => string 
         <button
           type="submit"
           disabled={!q.trim()}
-          aria-label="Ask"
-          data-tip="Ask"
+          aria-label={t("composer.send")}
+          data-tip={t("composer.send")}
           data-tip-kbd={"\u21b5"}
           className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-ink text-bg transition-opacity disabled:opacity-25"
         >

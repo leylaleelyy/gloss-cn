@@ -1,5 +1,6 @@
 import type { ResponseLanguage } from "./response-language";
 import type { ModelKey } from "./models";
+import { isUILanguage, type UILanguage } from "./ui-lang";
 
 /** Highlighter colours. */
 export type Marker = "yellow" | "green" | "blue" | "pink";
@@ -35,6 +36,8 @@ export type Settings = {
   responseLanguage: ResponseLanguage;
   length: "short" | "normal" | "long";
   model: ModelKey;
+  /** The reader's interface language. English is the default; Chinese is optional. */
+  uiLanguage: UILanguage;
   /**
    * Let answers look things up on the web: the model gets a search tool and decides when to use it.
    * On by default. (It replaced "web", an opt-in toggle, so older saved settings start on.)
@@ -59,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   responseLanguage: "zh-CN",
   length: "normal",
   model: "flash",
+  uiLanguage: "en",
   search: true,
   numbers: false,
   rail: true,
@@ -146,6 +150,8 @@ export function applySettings(s: Settings) {
   el.dataset.face = s.face;
   el.dataset.align = s.align;
   el.dataset.paras = s.paras;
+  el.dataset.lang = isUILanguage(s.uiLanguage) ? s.uiLanguage : "en";
+  el.lang = el.dataset.lang;
   el.style.setProperty("--read-size", `${s.size}px`);
   el.style.setProperty("--leading", String(LEADING[s.leading]));
   el.style.setProperty("--measure-k", String(MEASURE[s.width]));
@@ -155,4 +161,4 @@ export function applySettings(s: Settings) {
  * The same thing as applySettings, as an inline script for <head>, so the
  * first paint already has the reader's theme, pen and type. Kept in sync by hand.
  */
-export const BOOT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${SETTINGS_KEY}")||"{}"),e=document.documentElement,t=s.theme||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"night":"paper";e.dataset.webkit=window.nsh?"true":"false";e.dataset.theme=t;e.dataset.pen=s.pen||"vermilion";var m=/^\\/read\\/([^/]+)\\/?$/.exec(location.pathname),f=m?localStorage.getItem("${BOOK_FACE_PREFIX}"+decodeURIComponent(m[1])):null;if(${JSON.stringify(FACES.map(f => f.key))}.includes(f))s.face=f;try{if(m)Object.assign(s,(${cleanBookSettings.toString()})(JSON.parse(localStorage.getItem("${BOOK_SETTINGS_PREFIX}"+decodeURIComponent(m[1]))||"{}")))}catch(_){}e.dataset.face=s.face||"serif";e.dataset.align=s.align||"left";e.dataset.paras=s.paras||"spaced";if(s.size)e.style.setProperty("--read-size",s.size+"px");var L={tight:1.5,normal:1.64,loose:1.82},M={narrow:28,normal:32,wide:37};if(s.leading)e.style.setProperty("--leading",L[s.leading]);if(s.width)e.style.setProperty("--measure-k",M[s.width])}catch(x){}`;
+export const BOOT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${SETTINGS_KEY}")||"{}"),e=document.documentElement,t=s.theme||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"night":"paper";e.dataset.webkit=window.nsh?"true":"false";e.dataset.theme=t;e.dataset.lang=s.uiLanguage==="zh"?"zh":"en";e.lang=e.dataset.lang;e.dataset.pen=s.pen||"vermilion";var m=/^\\/read\\/([^/]+)\\/?$/.exec(location.pathname),f=m?localStorage.getItem("${BOOK_FACE_PREFIX}"+decodeURIComponent(m[1])):null;if(${JSON.stringify(FACES.map(f => f.key))}.includes(f))s.face=f;try{if(m)Object.assign(s,(${cleanBookSettings.toString()})(JSON.parse(localStorage.getItem("${BOOK_SETTINGS_PREFIX}"+decodeURIComponent(m[1]))||"{}")))}catch(_){}e.dataset.face=s.face||"serif";e.dataset.align=s.align||"left";e.dataset.paras=s.paras||"spaced";if(s.size)e.style.setProperty("--read-size",s.size+"px");var L={tight:1.5,normal:1.64,loose:1.82},M={narrow:28,normal:32,wide:37};if(s.leading)e.style.setProperty("--leading",L[s.leading]);if(s.width)e.style.setProperty("--measure-k",M[s.width])}catch(x){}`;

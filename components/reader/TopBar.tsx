@@ -14,9 +14,12 @@ import { barBtn } from "@/components/ui/Popover";
 import { useGlosses, useHighlights, useStore } from "@/lib/store";
 import { useReader } from "./context";
 import { readingScrollBehavior } from "@/lib/reading-motion";
+import { useI18n } from "@/lib/ui-lang";
+import { LanguageMenu } from "@/components/ui/LanguageMenu";
 
 export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number | null; pastTitle: boolean; listenFrom: () => string | null }) {
   const { ix, jumpTo } = useReader();
+  const { t } = useI18n();
   const [hidden, setHidden] = useState(false);
   const [scrolledUp, setScrolledUp] = useState(false);
   const [peek, setPeek] = useState(false);
@@ -96,7 +99,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
       } ${scrolled ? "border-b border-rule bg-bg/85 backdrop-blur-md" : "border-b border-transparent"}`}
     >
       <div className="mx-auto flex h-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
-        <Link href="/library" className={`${barBtn} reader-back shrink-0`} aria-label="返回书库 · Back to library" data-tip="返回书库"><ArrowLeft size={18} strokeWidth={1.8} aria-hidden /><span className="hidden sm:inline">Library</span></Link>
+        <Link href="/library" className={`${barBtn} reader-back shrink-0`} aria-label={t("topbar.backAria")} data-tip={t("topbar.backAria")}><ArrowLeft size={18} strokeWidth={1.8} aria-hidden /><span className="hidden sm:inline">{t("topbar.library")}</span></Link>
 
         {/* Always a spacer; the running title shows in it from tablet width up. */}
         <div className={`flex min-w-0 flex-1 justify-center transition-opacity duration-300 ${pastTitle ? "opacity-100" : "pointer-events-none opacity-0"}`}>
@@ -105,7 +108,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
               type="button"
               onClick={() => window.scrollTo({ top: 0, behavior: readingScrollBehavior() })}
               className="min-w-0 truncate rounded-full px-2.5 py-1.5 font-serif text-[16px] leading-none text-ink transition-colors hover:bg-sunk"
-              data-tip="Back to the top"
+              data-tip={t("topbar.backToTop")}
             >
               {ix.article.title}
             </button>
@@ -115,7 +118,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
                 <button
                   type="button"
                   onClick={() => jumpTo(section.start, { flash: false })}
-                  data-tip="Go to the start of this part"
+                  data-tip={t("topbar.goToPart")}
                   className="min-w-0 truncate rounded-full px-2 py-1.5 leading-none text-ink-3 hover:bg-sunk hover:text-ink"
                 >
                   {section.title}
@@ -127,31 +130,32 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
 
         <nav aria-label="Reader tools" className="reader-tools flex items-center gap-1">
           <button type="button" className={`${barBtn} !hidden min-[1260px]:!inline-flex`}
-            aria-label={showRail ? "收起左侧导航" : "展开左侧导航"} aria-pressed={showRail}
-            data-tip={showRail ? "收起左侧导航" : "展开左侧导航"} onClick={() => setSettings({ rail: !showRail })}>
-            {showRail ? <PanelLeftClose size={18} strokeWidth={1.8} /> : <PanelLeftOpen size={18} strokeWidth={1.8} />}<span className="toolbar-label">Sidebar</span>
+            aria-label={showRail ? t("topbar.hideSidebar") : t("topbar.showSidebar")} aria-pressed={showRail}
+            data-tip={showRail ? t("topbar.hideSidebar") : t("topbar.showSidebar")} onClick={() => setSettings({ rail: !showRail })}>
+            {showRail ? <PanelLeftClose size={18} strokeWidth={1.8} /> : <PanelLeftOpen size={18} strokeWidth={1.8} />}<span className="toolbar-label">{t("topbar.sidebar")}</span>
           </button>
           <Contents /><WordWiseControl />
           <span className="hidden sm:block">
-            <button type="button" className={barBtn} onClick={() => setUI({ shortcutsOpen: true })} aria-label="Keyboard shortcuts" data-tip="Shortcuts" data-tip-kbd="?">
-              <Keyboard size={18} strokeWidth={1.8} /><span className="toolbar-label">Shortcuts</span>
+            <button type="button" className={barBtn} onClick={() => setUI({ shortcutsOpen: true })} aria-label={t("topbar.shortcuts")} data-tip={t("topbar.shortcuts")} data-tip-kbd="?">
+              <Keyboard size={18} strokeWidth={1.8} /><span className="toolbar-label">{t("topbar.shortcuts")}</span>
             </button>
           </span>
           <ListenButton from={listenFrom} />
-          <VocabularyLink className={barBtn} data-tip="Vocabulary" aria-label="Vocabulary"><BookOpenText size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">Vocabulary</span></VocabularyLink>
+          <VocabularyLink className={barBtn} data-tip={t("topbar.vocabulary")} aria-label={t("topbar.vocabulary")}><BookOpenText size={18} strokeWidth={1.8} aria-hidden /><span className="toolbar-label">{t("topbar.vocabulary")}</span></VocabularyLink>
           <SettingsMenu />
+          <LanguageMenu />
           <KeyMenu />
           <button
             type="button"
             className={`${barBtn} ${notebookOpen ? "bg-sunk text-ink" : ""}`}
             onClick={() => setUI({ notebookOpen: !notebookOpen })}
             aria-pressed={notebookOpen}
-            aria-label="Notebook"
-            data-tip={notebookOpen ? "Close notebook" : "Your notes and highlights"}
+            aria-label={t("topbar.notebook")}
+            data-tip={notebookOpen ? t("topbar.notebookOpen") : t("topbar.notebookClosed")}
             data-tip-kbd="N"
           >
             <NotebookPen size={18} strokeWidth={1.8} />
-            <span className="toolbar-label">Notebook</span>
+            <span className="toolbar-label">{t("topbar.notebook")}</span>
             {count > 0 && (
               <span className="toolbar-count min-w-[18px] rounded-full bg-[var(--rubric)] px-1.5 text-center text-[11px] font-semibold leading-[18px] tabular-nums text-white">{count}</span>
             )}

@@ -3,6 +3,7 @@
 import { ViewTransition } from "react";
 import { fmtMinutes, lookOf, topicArtSrc, type Book, type Topic } from "@/lib/library";
 import { Cover, Glyph } from "./Book";
+import { useI18n } from "@/lib/ui-lang";
 
 const hours = (books: Book[]) => fmtMinutes(books.reduce((n, b) => n + b.minutes, 0));
 
@@ -55,6 +56,7 @@ export function TopicGrid({ topics, onPick }: { topics: { topic: Topic; books: B
 
 /** One topic, its books face-out, like the table at the front of a bookshop. */
 export function TopicPage({ topic: t, books, tools, onOpen }: { topic: Topic; books: Book[]; tools?: React.ReactNode; onOpen: (b: Book, el: HTMLElement) => void }) {
+  const { t: tr } = useI18n();
   return (
     <div style={{ ["--c" as string]: t.shades[0] }}>
       <header className="topic-head">
@@ -104,7 +106,7 @@ export function TopicPage({ topic: t, books, tools, onOpen }: { topic: Topic; bo
             </p>
           </li>
         ))}
-        {!books.length && <li className="col-span-full py-16 text-center text-[14px] text-ink-3">Nothing here matches.</li>}
+        {!books.length && <li className="col-span-full py-16 text-center text-[14px] text-ink-3">{tr("lib.nothingHere")}</li>}
       </ul>
     </div>
   );

@@ -9,6 +9,7 @@ import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
 import { Mark, MarkStack, type AgentMark } from "./AgentMarks";
 import { Glyph } from "./Book";
+import { useI18n } from "@/lib/ui-lang";
 
 export type AddTab = "links" | "agent" | "files";
 
@@ -17,6 +18,7 @@ export type AddTab = "links" | "agent" | "files";
  * saves to it through the Gloss MCP server.
  */
 export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab: (t: AddTab) => void; onClose: () => void; signedIn: boolean }) {
+  const { t } = useI18n();
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -36,18 +38,18 @@ export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab
   return createPortal(
     <div className="fixed inset-0 z-[80]" role="presentation">
       <div className="absolute inset-0 bg-ink/20 backdrop-blur-[2px]" style={{ animation: "fade 0.2s both" }} onClick={onClose} />
-      <section role="dialog" aria-modal aria-label="Add to the library" className="add-panel">
+      <section role="dialog" aria-modal aria-label={t("add.dialog")} className="add-panel">
         <header className="flex items-center justify-between gap-3">
-          <div className="lib-sort !ml-0" role="tablist" aria-label="Add">
+          <div className="lib-sort !ml-0" role="tablist" aria-label={t("add.title")}>
             <button type="button" role="tab" aria-selected={tab === "agent"} aria-checked={tab === "agent"} onClick={() => onTab("agent")}>
-              Connect an agent
+              {t("add.agent")}
             </button>
             <button type="button" role="tab" aria-selected={tab === "links"} aria-checked={tab === "links"} onClick={() => onTab("links")}>
-              Save links manually
+              {t("add.links")}
             </button>
-            <button type="button" role="tab" aria-selected={tab === "files"} onClick={() => onTab("files")}>Open files</button>
+            <button type="button" role="tab" aria-selected={tab === "files"} onClick={() => onTab("files")}>{t("add.files")}</button>
           </div>
-          <button type="button" aria-label="Close" data-tip="Close" data-tip-kbd="Esc" onClick={onClose} className="grid size-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+          <button type="button" aria-label={t("add.close")} data-tip={t("add.close")} data-tip-kbd="Esc" onClick={onClose} className="grid size-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
             <X size={17} />
           </button>
         </header>
@@ -64,12 +66,13 @@ export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab
  * holds its place, and the plus turns.
  */
 export function AddButton({ onClick, compact }: { onClick: () => void; compact?: boolean }) {
+  const { t } = useI18n();
   return (
     <button type="button" onClick={onClick} className={`lib-add${compact ? " is-compact" : ""}`}>
       <MarkStack size={compact ? 22 : 26} />
       <span className="min-w-0 text-left">
-        <span className="lib-add-title">Add articles</span>
-        {!compact && <span className="lib-add-sub">Open EPUB or PDF, paste links, or connect an agent</span>}
+        <span className="lib-add-title">{t("add.title")}</span>
+        {!compact && <span className="lib-add-sub">{t("add.subtitle")}</span>}
       </span>
       {!compact && (
         <span className="lib-add-plus" aria-hidden>

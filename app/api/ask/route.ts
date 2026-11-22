@@ -6,12 +6,13 @@ import { needKey } from "@/lib/quota";
 import { type Usage } from "@/lib/models";
 import { allow, clientId } from "@/lib/ratelimit";
 import { searchEnabled, searchQuery, WEB_TOOL, webSearch } from "@/lib/search";
+import { estimateTokens } from "@/lib/tokens";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /** About 150k tokens of text. Larger documents are windowed by the client. */
-const MAX_DOC_CHARS = 600_000;
+const MAX_DOC_TOKENS = 150_000;
 
 type Body = {
   apiKey?: string;
@@ -37,8 +38,8 @@ export async function POST(req: Request) {
   if (!doc?.title || !Array.isArray(doc.paras) || !thread || !(thread.action in ACTIONS)) {
     return Response.json({ error: "doc and thread are required." }, { status: 400 });
   }
-  const docChars = doc.paras.reduce((a, p) => a + (p.text?.length ?? 0), 0);
-  if (docChars > MAX_DOC_CHARS) return Response.json({ error: "This text is too long to send in one piece." }, { status: 413 });
+  const docChars = doc.paras.reduce((a, p) => a + estimateTokens(p.text ?? ""), 0);
+  if (docChars > MAX_DOC_TOKENS) return Response.json({ error: "This text is too long to send in one piece." }, { status: 413 });
   if ((thread.quote?.length ?? 0) > 12_000 || (thread.question?.length ?? 0) > 4_000) {
     return Response.json({ error: "That selection or question is too long." }, { status: 413 });
   }

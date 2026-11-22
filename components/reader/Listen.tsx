@@ -13,6 +13,7 @@ import { useStore } from "@/lib/store";
 import { TTS_MAX_CHARS } from "@/lib/voice";
 import { barBtn } from "@/components/ui/Popover";
 import { useReader } from "./context";
+import { useI18n } from "@/lib/ui-lang";
 
 /**
  * Read aloud. The text is spoken a passage at a time from where you are, each
@@ -224,15 +225,16 @@ export function ListenButton({ from }: { from: () => string | null }) {
   const { ix } = useReader();
   const on = useStore((s) => s.settings.listen);
   const status = useListen((s) => s.status);
+  const { t } = useI18n();
   if (!on) return null;
   const active = status !== "idle";
   return (
     <button
       type="button"
       className={`${barBtn} ${active ? "bg-sunk text-ink" : ""}`}
-      aria-label={active ? "Stop reading aloud" : "Read aloud from here"}
+      aria-label={active ? t("listen.stopReading") : t("listen.readAloud")}
       aria-pressed={active}
-      data-tip={active ? "Stop reading aloud" : "Read aloud from here"}
+      data-tip={active ? t("listen.stopReading") : t("listen.readAloud")}
       onClick={() => {
         if (active) return stopListening();
         // The paragraph cursor when it is on screen, otherwise the first paragraph in view.
@@ -241,7 +243,7 @@ export function ListenButton({ from }: { from: () => string | null }) {
         startListening(ix, r && r.bottom > 0 && r.top < window.innerHeight ? cursor : from());
       }}
     >
-      <Headphones size={18} strokeWidth={1.8} /><span className="toolbar-label">Listen</span>
+      <Headphones size={18} strokeWidth={1.8} /><span className="toolbar-label">{t("listen.label")}</span>
     </button>
   );
 }
@@ -249,6 +251,7 @@ export function ListenButton({ from }: { from: () => string | null }) {
 /** While the voice is reading: a small bar just above the question box, and the cursor on the paragraph being read. */
 export function ListenBar() {
   const { ix, jumpToBlock } = useReader();
+  const { t } = useI18n();
   const { status, block, rate, error, needKey } = useListen();
   const on = useStore((s) => s.settings.listen);
   const setUI = useStore((s) => s.setUI);
@@ -280,7 +283,7 @@ export function ListenBar() {
   return (
     <div
       role="region"
-      aria-label="Reading aloud"
+      aria-label={t("listen.label")}
       className="fixed bottom-[calc(env(safe-area-inset-bottom)+80px)] left-1/2 sm:bottom-[calc(env(safe-area-inset-bottom)+90px)] z-[46] flex -translate-x-1/2 items-center gap-1 rounded-full bg-lens p-1 text-lens-fg shadow-pop ring-1 ring-black/5"
       style={{ animation: "rise 0.35s var(--ease-out) both" }}
     >
@@ -288,7 +291,7 @@ export function ListenBar() {
         <button
           type="button"
           onClick={toggleListening}
-          aria-label={status === "playing" ? "Pause" : status === "error" ? "Try again" : "Play"}
+          aria-label={status === "playing" ? t("listen.pause") : status === "error" ? t("listen.retry") : t("listen.play")}
           className="grid size-9 place-items-center rounded-full bg-[var(--rubric)] text-white transition-transform active:scale-90"
         >
           {status === "loading" ? (
@@ -314,7 +317,7 @@ export function ListenBar() {
               }}
               className="h-9 shrink-0 rounded-full px-3 text-[13px] font-medium underline decoration-lens-mute underline-offset-4 transition-colors hover:bg-lens-hover"
             >
-              Add key
+              {t("listen.addKey")}
             </button>
           )}
         </>
@@ -323,22 +326,22 @@ export function ListenBar() {
           type="button"
           onClick={() => block && jumpToBlock(block, { flash: false })}
           className="h-9 rounded-full px-2.5 text-[13px] tabular-nums text-lens-fg/85 transition-colors hover:bg-lens-hover hover:text-lens-fg"
-          aria-label={n ? `Reading paragraph ${n}. Show it.` : "Show where it is reading"}
+          aria-label={n ? t("listen.para", { n }) : t("listen.show")}
         >
-          {n ? `Reading ¶${n}` : "Reading"}
+          {n ? t("listen.readingN", { n }) : t("listen.reading")}
         </button>
       )}
       {!needKey && (
         <button
           type="button"
           onClick={cycleRate}
-          aria-label={`Speed ${rate} times. Change speed.`}
+          aria-label={t("listen.speed", { rate })}
           className="h-9 min-w-[48px] rounded-full px-2.5 text-[13px] font-medium tabular-nums transition-colors hover:bg-lens-hover"
         >
           {`${rate}×`}
         </button>
       )}
-      <button type="button" onClick={stopListening} aria-label="Stop reading aloud" className="grid size-9 place-items-center rounded-full text-lens-fg/80 transition-colors hover:bg-lens-hover hover:text-lens-fg">
+      <button type="button" onClick={stopListening} aria-label={t("listen.stopReading")} className="grid size-9 place-items-center rounded-full text-lens-fg/80 transition-colors hover:bg-lens-hover hover:text-lens-fg">
         <Square size={13} fill="currentColor" strokeWidth={0} />
       </button>
     </div>

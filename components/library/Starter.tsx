@@ -8,12 +8,14 @@ import { importFromUrl, keep } from "@/lib/import";
 import { useStore } from "@/lib/store";
 import type { AddTab } from "./AddPanel";
 import { MarkStack } from "./AgentMarks";
+import { useI18n } from "@/lib/ui-lang";
 
 /**
  * Under a shelf that is still nearly empty: three ways to fill it. A dozen
  * classics in one click, links of your own, or an agent that shelves for you.
  */
 export function Starter({ count, signedIn, onAdd }: { count: number; signedIn: boolean; onAdd: (tab: AddTab) => void }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
   const [failed, setFailed] = useState(0);
 
@@ -65,14 +67,14 @@ export function Starter({ count, signedIn, onAdd }: { count: number; signedIn: b
         <span className="starter-icon">
           <Link2 size={20} />
         </span>
-        <span className="starter-title">Save your own links</span>
-        <span className="starter-body">Paste one or many. Gloss reads each one in and sorts it onto a topic.</span>
+        <span className="starter-title">{t("starter.saveLinks")}</span>
+        <span className="starter-body">{t("starter.saveLinksBody")}</span>
       </button>
       <button type="button" className="starter-card" onClick={() => onAdd("agent")}>
         <span className="starter-icon is-agent">
           <MarkStack size={24} />
         </span>
-        <span className="starter-title">Let your agent shelve for you</span>
+        <span className="starter-title">{t("starter.agent")}</span>
         <span className="starter-body">
           Give Grok Bot, Claude or ChatGPT your library, and ask it to save the good articles from your bookmarks.{!signedIn && " Needs an account."}
         </span>

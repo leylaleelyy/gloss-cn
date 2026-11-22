@@ -7,6 +7,7 @@ import type { Article, BriefData } from "./article";
 import { modelOf, type ModelKey, type Source, type Usage } from "./models";
 import { responseLanguage } from "./response-language";
 import { DEFAULT_SETTINGS, SETTINGS_KEY, type Marker, type Settings } from "./settings";
+import { isUILanguage } from "./ui-lang";
 
 /** A point in the text: block id and a character offset into its plain text. */
 export type Point = { b: string; o: number };
@@ -158,6 +159,14 @@ type State = Persisted &
 
 const KEY = "gloss:v1";
 const DOC_PREFIX = "gloss:doc:";
+/** Per-article shards. Streaming rewrites only the article that changed, and one article never crowds the rest out of the quota. */
+const V2 = {
+  glosses: "gloss:v2:glosses:",
+  highlights: "gloss:v2:highlights:",
+  briefs: "gloss:v2:briefs:",
+  progress: "gloss:v2:progress:",
+  library: "gloss:v2:library",
+} as const;
 
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -187,10 +196,39 @@ export const useStore = create<State>((set, get) => ({
     if (get().hydrated) return;
     let data: Partial<Persisted> = {};
     let settings: Partial<Settings> = {};
+    let legacy = false;
     try {
-      data = JSON.parse(localStorage.getItem(KEY) || "{}");
       settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     } catch {}
+    const v2 = readV2();
+    let legacyData: Partial<Persisted> | null = null;
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw !== null) legacyData = JSON.parse(raw) as Partial<Persisted>;
+    } catch {}
+    if (legacyData) {
+      // Finish a migration that was interrupted, or moved over from an older build:
+      // shards already written win; anything only in the legacy blob is kept.
+      const merge = <T extends { id: string }>(sharded: Record<string, T[]> = {}, old: Record<string, T[]> = {}) => {
+        const out = { ...old, ...sharded };
+        for (const [id, list] of Object.entries(sharded)) {
+          const seen = new Set(list.map((x) => x.id));
+          out[id] = [...list, ...(old[id] ?? []).filter((x) => !seen.has(x.id))];
+        }
+        return out;
+      };
+      const mergeMap = <T>(sharded: Record<string, T> = {}, old: Record<string, T> = {}) => ({ ...old, ...sharded });
+      data = {
+        glosses: merge(v2.data.glosses, legacyData.glosses),
+        highlights: merge(v2.data.highlights, legacyData.highlights),
+        briefs: mergeMap(v2.data.briefs, legacyData.briefs),
+        progress: mergeMap(v2.data.progress, legacyData.progress),
+        library: v2.data.library?.length ? v2.data.library : legacyData.library ?? [],
+      };
+      legacy = true;
+    } else {
+      data = v2.data;
+    }
     // A reload mid-answer leaves a dangling stream: mark it, never spin forever.
     const glosses = data.glosses ?? {};
     for (const list of Object.values(glosses)) {
@@ -211,9 +249,16 @@ export const useStore = create<State>((set, get) => ({
       briefs,
       progress: data.progress ?? {},
       library: data.library ?? [],
-      settings: { ...DEFAULT_SETTINGS, ...settings, responseLanguage: responseLanguage(settings.responseLanguage), model: modelOf(settings.model) },
+      settings: { ...DEFAULT_SETTINGS, ...settings, responseLanguage: responseLanguage(settings.responseLanguage), model: modelOf(settings.model), uiLanguage: isUILanguage(settings.uiLanguage) ? settings.uiLanguage : "en" },
       hydrated: true,
     });
+    if (legacy) {
+      // Move the legacy single key into per-article shards, once.
+      try {
+        writeAllV2(get());
+        localStorage.removeItem(KEY);
+      } catch {}
+    }
     void migrateDocs();
   },
 
@@ -378,23 +423,95 @@ export const useStore = create<State>((set, get) => ({
     }),
 }));
 
-/* Debounce streaming writes, but flush before the browser suspends the page. */
+/* Debounce streaming writes, but flush before the browser suspends the page.
+   Each article is its own key, so a long answer being streamed rewrites only
+   that one article instead of stringifying the whole store every 400ms. */
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let persistenceDirty = false;
+let dirty: { glosses: Set<string>; highlights: Set<string>; briefs: Set<string>; progress: Set<string>; library: boolean } = { glosses: new Set(), highlights: new Set(), briefs: new Set(), progress: new Set(), library: false };
+
+function readCollection<T>(prefix: string): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k?.startsWith(prefix)) continue;
+    try {
+      out[k.slice(prefix.length)] = JSON.parse(localStorage.getItem(k) || "null") as T;
+    } catch {}
+  }
+  return out;
+}
+
+/** Reads the per-article shards; `has` is false only when no shard has ever been written. */
+function readV2(): { has: boolean; data: Partial<Persisted> } {
+  let has = false;
+  const data: Partial<Persisted> = {};
+  try {
+    data.glosses = readCollection<Gloss[]>(V2.glosses);
+    data.highlights = readCollection<Highlight[]>(V2.highlights);
+    data.briefs = readCollection<BriefState>(V2.briefs);
+    data.progress = readCollection<Progress>(V2.progress);
+    has = Object.keys(data.glosses).length > 0 || Object.keys(data.highlights).length > 0 || Object.keys(data.briefs).length > 0 || Object.keys(data.progress).length > 0;
+    const libraryRaw = localStorage.getItem(V2.library);
+    if (libraryRaw !== null) {
+      has = true;
+      try {
+        data.library = JSON.parse(libraryRaw) as LibraryItem[];
+      } catch {}
+    }
+  } catch {}
+  return { has, data };
+}
+
+function writeCollection<T>(all: Record<string, T>, ids: Set<string>, prefix: string) {
+  for (const id of ids) {
+    const v = all[id];
+    const k = prefix + id;
+    if (v === undefined || v === null || (Array.isArray(v) && v.length === 0)) localStorage.removeItem(k);
+    else localStorage.setItem(k, JSON.stringify(v));
+  }
+}
+
+/** Writes every article, used once to move the legacy single key into shards. */
+function writeAllV2(st: State) {
+  for (const [id, list] of Object.entries(st.glosses)) if (list.length) localStorage.setItem(V2.glosses + id, JSON.stringify(list));
+  for (const [id, list] of Object.entries(st.highlights)) if (list.length) localStorage.setItem(V2.highlights + id, JSON.stringify(list));
+  for (const [id, b] of Object.entries(st.briefs)) localStorage.setItem(V2.briefs + id, JSON.stringify(b));
+  for (const [id, p] of Object.entries(st.progress)) localStorage.setItem(V2.progress + id, JSON.stringify(p));
+  localStorage.setItem(V2.library, JSON.stringify(st.library));
+}
+
 export function flushStorePersistence() {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = null;
   if (!persistenceDirty || !useStore.getState().hydrated) return;
-  const { glosses, highlights, briefs, progress, library } = useStore.getState();
+  const st = useStore.getState();
   try {
-    localStorage.setItem(KEY, JSON.stringify({ glosses, highlights, briefs, progress, library }));
-    persistenceDirty = false;
-  } catch { /* Keep dirty so a later save or page lifecycle event can retry. */ }
+    writeCollection(st.glosses, dirty.glosses, V2.glosses);
+    writeCollection(st.highlights, dirty.highlights, V2.highlights);
+    writeCollection(st.briefs, dirty.briefs, V2.briefs);
+    writeCollection(st.progress, dirty.progress, V2.progress);
+    if (dirty.library) localStorage.setItem(V2.library, JSON.stringify(st.library));
+    localStorage.removeItem(KEY);
+  } catch {
+    /* Keep dirty so a later save or page lifecycle event can retry. */
+    return;
+  }
+  dirty = { glosses: new Set(), highlights: new Set(), briefs: new Set(), progress: new Set(), library: false };
+  persistenceDirty = false;
 }
 if (typeof window !== "undefined") {
   useStore.subscribe((st, prev) => {
     if (!st.hydrated) return;
-    if (st.glosses === prev.glosses && st.highlights === prev.highlights && st.briefs === prev.briefs && st.progress === prev.progress && st.library === prev.library) return;
+    const diff = (cur: Record<string, unknown>, old: Record<string, unknown>, set: Set<string>) => {
+      for (const k of new Set([...Object.keys(cur), ...Object.keys(old)])) if (cur[k] !== old[k]) set.add(k);
+    };
+    diff(st.glosses, prev.glosses, dirty.glosses);
+    diff(st.highlights, prev.highlights, dirty.highlights);
+    diff(st.briefs, prev.briefs, dirty.briefs);
+    diff(st.progress, prev.progress, dirty.progress);
+    if (st.library !== prev.library) dirty.library = true;
+    if (!dirty.glosses.size && !dirty.highlights.size && !dirty.briefs.size && !dirty.progress.size && !dirty.library) return;
     persistenceDirty = true;
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(flushStorePersistence, 400);

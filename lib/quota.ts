@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { auth } from "@/lib/auth";
 import { db } from "./db";
 import { allow, clientId } from "./ratelimit";
+import { estimateTokens } from "./tokens";
 
 /** Dollars a day on the shared key: per reader, and across all readers. */
 export const FREE_USD = { anon: 0.1, user: 0.2 } as const;
@@ -79,7 +80,7 @@ async function check(w: { subject: string; limit: number; signedIn: boolean }, b
 }
 
 /** A cost when the model never reported one (a stream cut short): the whole prompt, at the fresh rate. */
-export const estimateUsd = (promptChars: number, inPerM: number) => ((promptChars / 4) * inPerM) / 1_000_000;
+export const estimateUsd = (text: string, inPerM: number) => (estimateTokens(text) * inPerM) / 1_000_000;
 
 /** Record what a request on the shared key cost, against the reader and against everyone. */
 export async function chargeFree(subject: string, usd: number) {

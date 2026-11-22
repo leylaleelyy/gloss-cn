@@ -5,6 +5,7 @@ import { anchorToRange, blockEl } from "@/lib/anchor";
 import { useStore, type Gloss, type Highlight } from "@/lib/store";
 import { GlossCard } from "./GlossCard";
 import { NoteCard } from "./NoteCard";
+import { useI18n } from "@/lib/ui-lang";
 
 import { placeMargin, type MarginItem } from "@/lib/margin-layout";
 
@@ -194,13 +195,14 @@ function MarginImpl({
 }
 
 function EmptyMargin({ top }: { top: number }) {
+  const { t } = useI18n();
   return (
     <div
       className="rise absolute inset-x-0 border-l-[1.5px] border-rule-strong py-1 pl-[15px] text-[13px] leading-relaxed text-ink-3"
       style={{ top, animationDelay: "500ms" }}
     >
-      <p className="font-medium text-ink-2">This area is for notes.</p>
-      <p className="mt-1">Select any passage, then just start typing to ask.</p>
+      <p className="font-medium text-ink-2">{t("margin.emptyTitle")}</p>
+      <p className="mt-1">{t("margin.emptyBody")}</p>
     </div>
   );
 }

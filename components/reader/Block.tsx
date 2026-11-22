@@ -5,6 +5,7 @@ import { useWiseHints } from "./WordWise";
 import type { WiseHint } from "@/lib/word-wise";
 import { startGloss } from "@/lib/ask";
 import { useReader } from "./context";
+import { useI18n } from "@/lib/ui-lang";
 import { MessageCirclePlus, ScanEye } from "lucide-react";
 import type { Block as BlockT, Run } from "@/lib/article";
 
@@ -165,9 +166,10 @@ function Picture({ src, alt, blockId }: { src: string; alt?: string; blockId: st
 }
 
 function Table({ rows, head }: { rows: string[][]; head?: boolean }) {
+  const { t } = useI18n();
   const body = head ? rows.slice(1) : rows;
   return (
-    <div className="tbl scroll-thin" tabIndex={0} role="region" aria-label="Table">
+    <div className="tbl scroll-thin" tabIndex={0} role="region" aria-label={t("block.table")}>
       <table>
         {head && (
           <thead>
@@ -195,6 +197,7 @@ function Table({ rows, head }: { rows: string[][]; head?: boolean }) {
 }
 
 function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHighlight, fresh, cursor, hasAt, onAsk }: Props) {
+  const { t } = useI18n();
   const Tag = block.type === "h2" ? "h2" : block.type === "h3" ? "h3" : block.type === "figure" ? "figure" : "div";
   const hints = useWiseHints(block.id);
   const content = segments(block, marks, activeGloss, hoverGloss, activeHighlight, fresh, hints, first);
@@ -210,8 +213,8 @@ function BlockImpl({ block, n, first, marks, activeGloss, hoverGloss, activeHigh
           type="button"
           className="pnum"
           onClick={() => onAsk(block.id)}
-          aria-label={`Ask about paragraph ${n}`}
-          data-tip={`Ask about \u00b6${n}`}
+          aria-label={t("block.askPara", { n: n ?? 0 })}
+          data-tip={t("block.askParaTip", { n: n ?? 0 })}
           data-tip-side="left"
         >
           {hasAt && <span className="pnum-dot" aria-hidden />}

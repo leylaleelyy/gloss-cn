@@ -32,8 +32,10 @@ import { Contents } from "./Contents";
 import { TopBar } from "./TopBar";
 import { WordWise } from "./WordWise";
 import { VocabularyHighlights } from "./VocabularyHighlights";
+import { useI18n } from "@/lib/ui-lang";
 
 export function Reader({ id, initial }: { id: string; initial: Article | null }) {
+  const { t } = useI18n();
   const [article, setArticle] = useState<Article | null>(initial);
   const [missing, setMissing] = useState(false);
   const hydrate = useStore((s) => s.hydrate);
@@ -88,10 +90,10 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
       <main className="grid min-h-dvh place-items-center px-6 text-center">
         <div>
           <GlossWordmark />
-          <p className="mt-6 font-serif text-[26px] text-ink">This text is not on this device.</p>
-          <p className="mt-2 text-[14px] text-ink-3">Imported texts live in the browser that imported them, or in your account when you are signed in.</p>
+          <p className="mt-6 font-serif text-[26px] text-ink">{t("reader.notOnDevice")}</p>
+          <p className="mt-2 text-[14px] text-ink-3">{t("reader.notOnDeviceHint")}</p>
           <Link href="/" className="mt-6 inline-flex h-10 items-center rounded-full bg-ink px-5 text-[14px] font-medium text-bg">
-            Back to the library
+            {t("reader.backToLibrary")}
           </Link>
         </div>
       </main>
@@ -116,6 +118,7 @@ const GUTTER_WIDE = 32;
 const GUTTER_MID = 24;
 
 function ReaderInner({ article }: { article: Article }) {
+  const { t } = useI18n();
   const ix = useMemo(() => indexArticle(article), [article]);
   const articleId = article.id;
   const [articleEl, setArticleEl] = useState<HTMLDivElement | null>(null);
@@ -595,7 +598,7 @@ function ReaderInner({ article }: { article: Article }) {
                       {article.published && <span className="text-ink-3">{`  \u00b7  ${article.published}`}</span>}
                     </p>
                     <p className="mt-1 text-[13px] leading-snug text-ink-3">
-                      {readingMinutes(ix.words)} min read <span className="text-ink-4">{"\u00b7"}</span> {paraCount} paragraphs
+                      {t("reader.minRead", { count: readingMinutes(ix.words) })} <span className="text-ink-4">{"\u00b7"}</span> {t("reader.paragraphs", { count: paraCount })}
                     </p>
                   </div>
                   {article.sourceUrl && (
@@ -605,7 +608,7 @@ function ReaderInner({ article }: { article: Article }) {
                       rel="noopener noreferrer"
                       className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-rule px-3.5 text-[13px] font-medium text-ink-2 transition-[border-color,color,transform] hover:border-rule-strong hover:text-ink active:scale-[0.97]"
                     >
-                      Original <ArrowUpRight size={14} strokeWidth={2} />
+                      {t("reader.original")} <ArrowUpRight size={14} strokeWidth={2} />
                     </a>
                   )}
                 </div>
@@ -632,7 +635,7 @@ function ReaderInner({ article }: { article: Article }) {
                     Open your notebook
                   </button>
                   <Link href="/library" className="inline-flex h-9 items-center rounded-full border border-rule px-4 text-[13px] font-medium text-ink-2 hover:border-rule-strong hover:text-ink">
-                    Back to the library
+                    {t("reader.backToLibrary")}
                   </Link>
                 </div>
               </footer>
@@ -663,16 +666,16 @@ function ReaderInner({ article }: { article: Article }) {
         <Shortcuts />
         {!wide && <GlossSheet />}
 
-        {readingReturn && <div className="reading-return fixed bottom-[calc(env(safe-area-inset-bottom)+88px)] left-1/2 z-[70] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-1 rounded-full border border-rule bg-raised p-1 shadow-pop" aria-label="Reading return">
+        {readingReturn && <div className="reading-return fixed bottom-[calc(env(safe-area-inset-bottom)+88px)] left-1/2 z-[70] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-1 rounded-full border border-rule bg-raised p-1 shadow-pop" aria-label={t("reader.readingReturn")}>
           <button type="button" onClick={continueReading} className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-medium text-ink hover:bg-sunk">
-            <Undo2 size={16} aria-hidden />返回继续阅读
+            <Undo2 size={16} aria-hidden />{t("reader.returnReading")}
           </button>
-          <button type="button" aria-label="Dismiss reading return" onClick={() => setReadingReturn(null)} className="grid size-10 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-sunk"><X size={15} aria-hidden /></button>
+          <button type="button" aria-label={t("reader.dismissReturn")} onClick={() => setReadingReturn(null)} className="grid size-10 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-sunk"><X size={15} aria-hidden /></button>
         </div>}
 
         {toast?.kind === "resume" && (
           <Toast onClose={() => setToast(null)}>
-            <span>Picked up where you left off, at ¶{toast.n}.</span>
+            <span>{t("reader.resumed", { n: toast.n })}</span>
             <button
               type="button"
               onClick={() => {
@@ -681,18 +684,16 @@ function ReaderInner({ article }: { article: Article }) {
               }}
               className="font-medium underline decoration-lens-mute underline-offset-4"
             >
-              Start over
+              {t("reader.startOver")}
             </button>
           </Toast>
         )}
         {toast?.kind === "hint" && (
           <Toast onClose={dismissHint}>
             {window.matchMedia("(pointer: coarse)").matches ? (
-              <span>Select any passage to ask about it, explain it or highlight it.</span>
+              <span>{t("reader.selectHint")}</span>
             ) : (
-              <span>
-                Select any passage, then <span className="font-medium">just start typing</span> to ask about it.
-              </span>
+              <span>{t("reader.selectHintDesktop")}</span>
             )}
           </Toast>
         )}
@@ -706,6 +707,7 @@ const EMPTY: Mark[] = [];
 /** Under 1080px there is no margin, so the active gloss rises as a sheet. */
 function GlossSheet() {
   const { ix } = useReader();
+  const { t } = useI18n();
   const glosses = useGlosses(ix.article.id);
   const active = useStore((s) => s.activeGloss);
   const notebookOpen = useStore((s) => s.notebookOpen);
@@ -719,7 +721,7 @@ function GlossSheet() {
     >
       <div className="sticky top-0 z-10 flex items-center justify-center bg-raised/95 pb-1 pt-2.5 backdrop-blur">
         <span className="h-1 w-9 rounded-full bg-rule-strong" aria-hidden />
-        <button type="button" aria-label="Close" onClick={() => setUI({ activeGloss: null })} className="absolute right-3 top-2 grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-sunk">
+        <button type="button" aria-label={t("reader.close")} onClick={() => setUI({ activeGloss: null })} className="absolute right-3 top-2 grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-sunk">
           <X size={16} />
         </button>
       </div>
