@@ -19,12 +19,12 @@
  * seconds, so what an agent saves arrives while you look.
  */
 
-import { forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
+import { flushDocMigrations, forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
 import type { Article } from "./article";
 import { forgetCover } from "./covers";
 import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
-import { googleAuthHeaders, signOutGoogle } from "./google-auth";
+import { expireGoogleCredential, googleAuthHeaders } from "./google-auth";
 import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
 import { gzipSync } from "fflate";
 import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
@@ -53,7 +53,7 @@ function packDoc(doc: Article): unknown {
   if (text.length < 700_000) return doc;
   const bytes = gzipSync(new TextEncoder().encode(text));
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return { __gz: btoa(binary) };
 }
 
@@ -83,23 +83,24 @@ function markImagesRepacked(ids: Iterable<string>) {
   try { localStorage.setItem(REPACK_KEY, JSON.stringify([...set])); } catch {}
 }
 
-/** A large text uploads as gzip chunks and leaves a tiny marker in the article row. */
+/** A large text uploads as versioned gzip chunks and leaves a tiny pointer in the article row. */
 async function uploadDoc(articleId: string, packed: unknown): Promise<unknown> {
   if (!packed || typeof packed !== "object" || typeof (packed as { __gz?: unknown }).__gz !== "string") return packed;
   const gz = (packed as { __gz: string }).__gz;
   if (gz.length <= MAX_INLINE_DOC) return packed;
   const total = Math.ceil(gz.length / DOC_CHUNK);
+  const uploadId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   for (let seq = 0; seq < total; seq++) {
     const data = gz.slice(seq * DOC_CHUNK, (seq + 1) * DOC_CHUNK);
     const res = await fetchWithTimeout(
       `/api/articles/${encodeURIComponent(articleId)}/doc`,
-      { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ seq, total, data }) },
+      { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ seq, total, data, uploadId }) },
       PUSH_TIMEOUT
     );
-    if (res.status === 401) signOutGoogle();
+    if (res.status === 401) expireGoogleCredential();
     if (!res.ok) throw new Error(`doc ${res.status}`);
   }
-  return { __chunked: true };
+  return { __chunked: true, uploadId };
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
@@ -273,7 +274,7 @@ export function startSync(userId: string) {
       const changes: Partial<Record<Collection, OutRow[]>> = {};
       for (const r of batch) (changes[r.c] ??= []).push(r.row);
       const res = await fetchWithTimeout("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ changes, confirm: deletionsApproved }) }, PUSH_TIMEOUT);
-      if (res.status === 401) signOutGoogle();
+      if (res.status === 401) expireGoogleCredential();
       if (!res.ok) throw new Error(`push ${res.status}`);
       for (const r of batch) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
@@ -309,7 +310,7 @@ export function startSync(userId: string) {
     try {
     const q = base.since ? `?since=${encodeURIComponent(new Date(Date.parse(base.since) - OVERLAP_MS).toISOString())}` : "";
     const res = await fetchWithTimeout(`/api/sync${q}`, { headers: googleAuthHeaders() }, PULL_TIMEOUT);
-    if (res.status === 401) signOutGoogle();
+    if (res.status === 401) expireGoogleCredential();
     if (!res.ok) throw new Error(`pull ${res.status}`);
     const { now, changes } = (await res.json()) as { now: string; changes: RemoteChanges };
 
@@ -318,8 +319,13 @@ export function startSync(userId: string) {
       const before = base.seen.articles[r.id];
       const localDocAt = useStore.getState().library.find((item) => item.id === r.id)?.docAt;
       const remoteDocAt = (r.data as { docAt?: number } | null)?.docAt;
-      if (!r.deleted && remoteDocAt && remoteDocAt !== localDocAt) void forgetDoc(r.id);
-      if (!r.deleted && r.data && before && (r.data as { rev?: number }).rev !== undefined && stable(r.data) !== before[0]) void forgetDoc(r.id);
+      const replaced =
+        (!r.deleted && remoteDocAt && remoteDocAt !== localDocAt) ||
+        (!r.deleted && r.data && before && (r.data as { rev?: number }).rev !== undefined && stable(r.data) !== before[0]);
+      if (replaced) {
+        await forgetDoc(r.id);
+        window.dispatchEvent(new CustomEvent("gloss:doc-updated", { detail: r.id }));
+      }
       // Removed on another device: its painted cover goes from this one too.
       if (r.deleted) void forgetCover(r.id);
     }
@@ -351,8 +357,10 @@ export function startSync(userId: string) {
       // Vocabulary lives in its own IndexedDB store; a push must not run before it is read.
       await hydrateLearning();
       await pull();
-      // Fold texts that arrived under different ids on different devices before pushing the cleanup.
+      // Fold texts that arrived under different ids on different devices and wait
+      // for copied local documents to land before pushing the duplicate deletions.
       useStore.getState().dedupeLibrary();
+      await flushDocMigrations();
       await push();
       setSyncStatus("synced");
     } catch (e) {

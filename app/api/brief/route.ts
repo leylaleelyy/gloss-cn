@@ -4,9 +4,12 @@ import { BRIEF_TASK, systemFor, type DocPayload } from "@/lib/prompts";
 import { completeJSON, DEFAULT_MODEL, isModelKey } from "@/lib/ai";
 import { undash, type BriefData } from "@/lib/article";
 import { needKey } from "@/lib/quota";
+import { estimateTokens } from "@/lib/tokens";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+const MAX_DOC_TOKENS = 150_000;
 
 export async function POST(req: Request) {
   let body: { apiKey?: string; model?: string; responseLanguage?: unknown; doc?: DocPayload };
@@ -19,6 +22,8 @@ export async function POST(req: Request) {
   if (!doc?.title || !Array.isArray(doc.paras) || doc.paras.length === 0) {
     return Response.json({ error: "doc is required." }, { status: 400 });
   }
+  const docTokens = doc.paras.reduce((a, p) => a + estimateTokens(p.text ?? ""), 0);
+  if (docTokens > MAX_DOC_TOKENS) return Response.json({ error: "This text is too long to summarize in one piece." }, { status: 413 });
 
   const apiKey = body.apiKey?.trim() || undefined;
   if (!(await providerConfigured())) return needKey(null);

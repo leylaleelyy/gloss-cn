@@ -71,9 +71,18 @@ export function numberBlocks(blocks: Block[]): Map<string, number> {
   return map;
 }
 
+const CJK = /[\u2e80-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/g;
+
+/** Counts CJK characters individually and other scripts by whitespace-separated words. */
+export function countWords(text: string): number {
+  const cjk = text.match(CJK)?.length ?? 0;
+  const rest = text.replace(CJK, " ").split(/\s+/).filter(Boolean).length;
+  return cjk + rest;
+}
+
 export function wordCount(a: Article): number {
   let w = 0;
-  for (const b of a.blocks) w += blockText(b).split(/\s+/).filter(Boolean).length;
+  for (const b of a.blocks) w += countWords(blockText(b));
   return w;
 }
 

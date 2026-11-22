@@ -33,9 +33,11 @@ import { TopBar } from "./TopBar";
 import { WordWise } from "./WordWise";
 import { VocabularyHighlights } from "./VocabularyHighlights";
 import { useI18n } from "@/lib/ui-lang";
+import { useAuth } from "@/components/account/Auth";
 
 export function Reader({ id, initial }: { id: string; initial: Article | null }) {
   const { t } = useI18n();
+  const { userId } = useAuth();
   const [article, setArticle] = useState<Article | null>(initial);
   const [missing, setMissing] = useState(false);
   const hydrate = useStore((s) => s.hydrate);
@@ -48,16 +50,33 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
     applySettings(useStore.getState().settings);
   }, [hydrate, id]);
 
+  const hasArticle = Boolean(article);
   useEffect(() => {
     let cancelled = false;
-    if (!initial) {
-      // Not on this device: it may be in the reader's account, fetched now that it is opened.
+    if (!initial && !hasArticle) {
+      // Not on this device: it may be in the reader's account, fetched now that it is opened
+      // or once sign-in finishes.
       void loadDoc(id)
         .then((a) => a ?? fetchText(id))
-        .then((a) => { if (!cancelled) { if (a) setArticle(a); else setMissing(true); } });
+        .then((a) => {
+          if (cancelled) return;
+          if (a) { setArticle(a); setMissing(false); }
+          else setMissing(true);
+        });
     }
-    return () => { cancelled = true; };
-  }, [id, initial]);
+    const onUpdated = (event: Event) => {
+      const updatedId = (event as CustomEvent<string>).detail;
+      if (updatedId !== id || initial) return;
+      void fetchText(id).then((a) => {
+        if (!cancelled && a) { setArticle(a); setMissing(false); }
+      });
+    };
+    window.addEventListener("gloss:doc-updated", onUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("gloss:doc-updated", onUpdated);
+    };
+  }, [id, initial, hasArticle, userId]);
 
   // The text was read again (more carefully, or a page in the background): show the new reading in
   // place. Scroll anchoring alone did not hold when a page above the reader was swapped, so the

@@ -132,10 +132,18 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
   for (const row of (changes.articles ?? []).filter((r) => r.deleted)) {
     statements.push(database.prepare("delete from covers where user_id = ? and id = ?").bind(userId, row.id));
     statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
+    statements.push(database.prepare("delete from doc_chunks where user_id = ? and article_id = ?").bind(userId, row.id));
   }
-  // Replacing a chunked text with an inline one leaves no stale chunks behind.
-  for (const row of (changes.articles ?? []).filter((r) => !r.deleted && r.doc != null && !(typeof r.doc === "object" && (r.doc as { __chunked?: boolean }).__chunked))) {
-    statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
+  // Replacing a text prunes superseded chunks once the new article pointer lands.
+  for (const row of (changes.articles ?? []).filter((r) => !r.deleted && r.doc != null)) {
+    const marker = typeof row.doc === "object" ? (row.doc as { __chunked?: boolean; uploadId?: string }) : null;
+    if (marker?.__chunked && marker.uploadId) {
+      statements.push(database.prepare("delete from doc_chunks where user_id = ? and article_id = ? and upload_id != ?").bind(userId, row.id, marker.uploadId));
+      statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
+    } else if (!marker?.__chunked) {
+      statements.push(database.prepare("delete from doc_chunks where user_id = ? and article_id = ?").bind(userId, row.id));
+      statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
+    }
   }
   // D1 batches are bounded; keep each one modest so a large import can still land.
   for (let i = 0; i < statements.length; i += 100) await database.batch(statements.slice(i, i + 100));
@@ -145,9 +153,11 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
 export async function articleDoc(userId: string, id: string): Promise<unknown | null> {
   const row = await d1().prepare("select doc from articles where user_id = ? and id = ? and deleted = 0 and doc is not null").bind(userId, id).first<{ doc?: string }>();
   if (!row?.doc) return null;
-  const marker = parse(row.doc) as { __chunked?: boolean };
+  const marker = parse(row.doc) as { __chunked?: boolean; uploadId?: string };
   if (marker.__chunked) {
-    const chunks = await d1().prepare("select data from article_docs where user_id = ? and article_id = ? order by seq").bind(userId, id).all<{ data: string }>();
+    const chunks = marker.uploadId
+      ? await d1().prepare("select data from doc_chunks where user_id = ? and article_id = ? and upload_id = ? order by seq").bind(userId, id, marker.uploadId).all<{ data: string }>()
+      : await d1().prepare("select data from article_docs where user_id = ? and article_id = ? order by seq").bind(userId, id).all<{ data: string }>();
     const gz = (chunks.results ?? []).map((chunk) => chunk.data).join("");
     return gz ? inflateDoc(gz) : null;
   }
@@ -239,7 +249,7 @@ export async function shelveForUser(userId: string, item: { id: string }, doc: u
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return btoa(binary);
 }
 

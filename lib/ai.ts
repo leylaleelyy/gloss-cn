@@ -50,8 +50,9 @@ export async function* streamChat(req: {
   toolChoice?: "auto" | "none";
 }): AsyncGenerator<StreamEvent> {
   const provider = await getProvider();
-  const model = { id: provider.model, label: provider.model };
-  if (!provider.baseUrl || !provider.model) {
+  const effective = req.apiKey && !provider.apiKey ? { ...provider, apiKey: req.apiKey } : provider;
+  const model = { id: effective.model, label: effective.model };
+  if (!effective.baseUrl || !effective.model) {
     yield { type: "error", text: "Configure an AI base URL and model in AI settings." };
     return;
   }
@@ -60,10 +61,10 @@ export async function* streamChat(req: {
 
   let res: Response;
   try {
-    res = await fetch(`${provider.baseUrl}/chat/completions`, {
+    res = await fetch(`${effective.baseUrl}/chat/completions`, {
       method: "POST",
       signal: req.signal,
-      headers: aiHeaders(provider),
+      headers: aiHeaders(effective),
       body: JSON.stringify({
         model: model.id,
         stream: true,
@@ -156,20 +157,21 @@ export async function completeJSON<T>(req: {
   thinking?: boolean;
 }): Promise<{ ok: true; data: T; usage: Usage } | { ok: false; error: string }> {
   const provider = await getProvider();
-  const model = { id: provider.model, label: provider.model };
-  if (!provider.baseUrl || !provider.model) return { ok: false, error: "Configure an AI base URL and model in AI settings." };
+  const effective = req.apiKey && !provider.apiKey ? { ...provider, apiKey: req.apiKey } : provider;
+  const model = { id: effective.model, label: effective.model };
+  if (!effective.baseUrl || !effective.model) return { ok: false, error: "Configure an AI base URL and model in AI settings." };
 
   let res: Response;
   try {
-    res = await fetch(`${provider.baseUrl}/chat/completions`, {
+    res = await fetch(`${effective.baseUrl}/chat/completions`, {
       method: "POST",
       signal: req.signal,
-      headers: aiHeaders(provider),
+      headers: aiHeaders(effective),
       body: JSON.stringify({
         model: model.id,
         temperature: 0.3,
         max_tokens: req.maxTokens ?? 1400,
-        ...(req.thinking !== undefined && new URL(provider.baseUrl).hostname === "api.deepseek.com" ? { thinking: { type: req.thinking ? "enabled" : "disabled" } } : {}),
+        ...(req.thinking !== undefined && new URL(effective.baseUrl).hostname === "api.deepseek.com" ? { thinking: { type: req.thinking ? "enabled" : "disabled" } } : {}),
         response_format: { type: "json_object" },
         messages: req.messages,
       }),

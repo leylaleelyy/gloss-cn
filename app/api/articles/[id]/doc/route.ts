@@ -11,7 +11,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { userId } = await auth();
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
   const articleId = (await params).id;
-  let body: { seq?: unknown; total?: unknown; data?: unknown };
+  let body: { seq?: unknown; total?: unknown; data?: unknown; uploadId?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -20,17 +20,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const seq = Number(body.seq);
   const total = Number(body.total);
   const data = body.data;
+  const uploadId = typeof body.uploadId === "string" && /^[a-zA-Z0-9_-]{4,64}$/.test(body.uploadId) ? body.uploadId : null;
   if (!Number.isInteger(seq) || seq < 0 || !Number.isInteger(total) || total < 1 || total > MAX_CHUNKS) return Response.json({ error: "Invalid chunk." }, { status: 400 });
   if (seq >= total || typeof data !== "string" || !data || data.length > MAX_CHUNK || !/^[A-Za-z0-9+/=]+$/.test(data)) return Response.json({ error: "Invalid chunk data." }, { status: 400 });
 
   const db = d1();
-  if (seq === 0) await db.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, articleId).run();
-  await db
-    .prepare(
-      `insert into article_docs (user_id, article_id, seq, data, updated_at) values (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-       on conflict (user_id, article_id, seq) do update set data = excluded.data, updated_at = excluded.updated_at`
-    )
-    .bind(userId, articleId, seq, data)
-    .run();
+  if (uploadId) {
+    await db
+      .prepare(
+        `insert into doc_chunks (user_id, article_id, upload_id, seq, data, updated_at) values (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+         on conflict (user_id, article_id, upload_id, seq) do update set data = excluded.data, updated_at = excluded.updated_at`
+      )
+      .bind(userId, articleId, uploadId, seq, data)
+      .run();
+  } else {
+    if (seq === 0) await db.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, articleId).run();
+    await db
+      .prepare(
+        `insert into article_docs (user_id, article_id, seq, data, updated_at) values (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+         on conflict (user_id, article_id, seq) do update set data = excluded.data, updated_at = excluded.updated_at`
+      )
+      .bind(userId, articleId, seq, data)
+      .run();
+  }
   return Response.json({ ok: true });
 }

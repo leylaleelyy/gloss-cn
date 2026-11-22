@@ -7,7 +7,7 @@ await send('Runtime.enable');await send('Page.enable');await send('Page.navigate
 const item=(id,words)=>({id,title:'The Tail End',author:'Tim Urban',source:'Wait But Why',words,origin:'url',addedAt:id==='a'?1:2,sourceUrl:'https://waitbutwhy.com/2015/12/the-tail-end.html',topic:'living',tags:id==='a'?['time']:['life']});
 const h=(id,articleId,o)=>({id,articleId,anchor:{start:{b:'b1',o},end:{b:'b1',o:o+5},quote:'quote'},createdAt:1,color:'yellow',note:'note '+id});
 await ev(`localStorage.clear();localStorage.setItem('gloss:v1',JSON.stringify({glosses:{},briefs:{},progress:{a:{block:'b1',pct:.2,at:1},b:{block:'b2',pct:.8,at:2}},highlights:{a:[${JSON.stringify(h('h1','a',0))}],b:[${JSON.stringify(h('h2','b',5))}]},library:[${JSON.stringify(item('a',100))},${JSON.stringify(item('b',100))}]}))`);
-await send('Page.navigate',{url:(process.env.GLOSS_TEST_URL || 'http://localhost:3100')+'/library'});await sleep(2500);
+await send('Page.navigate',{url:(process.env.GLOSS_TEST_URL || 'http://localhost:3100')+'/library'});for(let i=0;i<60&&!await ev(`!!localStorage.getItem('gloss:v2:library')`);i++)await sleep(250);await sleep(300);
 const lib=await ev(`JSON.parse(localStorage.getItem('gloss:v2:library')||'[]')`);
 assert.equal(lib.length,1,'one library entry remains');
 assert.deepEqual(lib[0].tags.sort(),['life','time']);

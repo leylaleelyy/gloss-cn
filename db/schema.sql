@@ -130,3 +130,16 @@ create table if not exists article_docs (
   primary key (user_id, article_id, seq)
 );
 create index if not exists article_docs_user on article_docs (user_id, article_id);
+
+-- Versioned document chunks so an interrupted upload never overwrites the
+-- previous complete text; old chunks are pruned once the article row commits.
+create table if not exists doc_chunks (
+  user_id text not null,
+  article_id text not null,
+  upload_id text not null,
+  seq integer not null,
+  data text not null,
+  updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  primary key (user_id, article_id, upload_id, seq)
+);
+create index if not exists doc_chunks_user on doc_chunks (user_id, article_id, upload_id);

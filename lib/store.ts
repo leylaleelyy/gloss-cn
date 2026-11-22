@@ -439,15 +439,18 @@ export const useStore = create<State>((set, get) => ({
     }
 
     set({ library, highlights, glosses, briefs, progress });
-    // The duplicate's text is folded into the canonical entry without blocking the shelf.
+    // The duplicate's text is folded into the canonical entry without blocking the shelf,
+    // and sync waits for these copies before pushing the duplicate deletions.
+    const hasImages = (d: Article) => Boolean(d.image?.startsWith("data:") || d.blocks.some((b) => b.src?.startsWith("data:")));
     for (const [from, to] of docs) {
-      void (async () => {
-        if (!(await loadDoc(to))) {
-          const doc = await loadDoc(from);
-          if (doc) await saveDoc({ ...doc, id: to });
+      const task = (async () => {
+        const [toDoc, fromDoc] = await Promise.all([loadDoc(to), loadDoc(from)]);
+        if (fromDoc && (!toDoc || (!hasImages(toDoc) && hasImages(fromDoc)))) {
+          await saveDoc({ ...fromDoc, id: to });
         }
         await forgetDoc(from);
-      })();
+      })().finally(() => docMigrations.delete(task));
+      docMigrations.add(task);
     }
     return true;
   },
@@ -490,44 +493,75 @@ export const useStore = create<State>((set, get) => ({
   applyRemote: (c) =>
     set((st) => {
       let library = st.library;
+      let libraryChanged = false;
       for (const r of c.articles ?? []) {
-        library = library.filter((x) => x.id !== r.id);
-        if (r.deleted || !r.data) void dropDoc(r.id);
-        else library = [r.data, ...library];
+        const index = library.findIndex((x) => x.id === r.id);
+        if (r.deleted || !r.data) {
+          void dropDoc(r.id);
+          if (index >= 0) {
+            library = library.filter((x) => x.id !== r.id);
+            libraryChanged = true;
+          }
+        } else if (index >= 0) {
+          if (JSON.stringify(library[index]) !== JSON.stringify(r.data)) {
+            library = library.map((x, i) => (i === index ? r.data! : x));
+            libraryChanged = true;
+          }
+        } else {
+          library = [r.data, ...library];
+          libraryChanged = true;
+        }
       }
 
       const merge = <T extends { id: string; createdAt: number }>(cur: Record<string, T[]>, rows: RemoteRow<T>[] = [], keep?: (t: T) => boolean) => {
         if (!rows.length) return cur;
-        const next = { ...cur };
+        let next = cur;
         for (const r of rows) {
           const list = next[r.articleId] ?? [];
           const local = list.find((x) => x.id === r.id);
           if (local && keep?.(local)) continue;
-          next[r.articleId] = list.filter((x) => x.id !== r.id);
-          if (!r.deleted && r.data) next[r.articleId] = [...next[r.articleId], r.data].sort((a, b) => a.createdAt - b.createdAt);
+          if ((r.deleted || !r.data) && !local) continue;
+          if (!r.deleted && r.data && local && JSON.stringify(local) === JSON.stringify(r.data)) continue;
+          if (next === cur) next = { ...cur };
+          const filtered = list.filter((x) => x.id !== r.id);
+          next[r.articleId] = !r.deleted && r.data ? [...filtered, r.data].sort((a, b) => a.createdAt - b.createdAt) : filtered;
         }
         return next;
       };
 
       const byArticle = <T,>(cur: Record<string, T>, rows: RemoteRow<T>[] = []) => {
         if (!rows.length) return cur;
-        const next = { ...cur };
+        let next = cur;
         for (const r of rows) {
+          const local = next[r.id];
+          if ((r.deleted || !r.data) && local === undefined) continue;
+          if (!r.deleted && r.data && local !== undefined && JSON.stringify(local) === JSON.stringify(r.data)) continue;
+          if (next === cur) next = { ...cur };
           if (r.deleted || !r.data) delete next[r.id];
           else next[r.id] = r.data;
         }
         return next;
       };
 
+      const highlights = merge(st.highlights, c.highlights);
+      const glosses = merge(st.glosses, c.glosses, (g) => g.turns.some((t) => t.streaming));
+      const briefs = byArticle(st.briefs, c.briefs);
+      const progress = byArticle(st.progress, c.progress);
+      if (!libraryChanged && highlights === st.highlights && glosses === st.glosses && briefs === st.briefs && progress === st.progress) return st;
       return {
-        library,
-        highlights: merge(st.highlights, c.highlights),
-        glosses: merge(st.glosses, c.glosses, (g) => g.turns.some((t) => t.streaming)),
-        briefs: byArticle(st.briefs, c.briefs),
-        progress: byArticle(st.progress, c.progress),
+        ...(libraryChanged ? { library } : {}),
+        ...(highlights !== st.highlights ? { highlights } : {}),
+        ...(glosses !== st.glosses ? { glosses } : {}),
+        ...(briefs !== st.briefs ? { briefs } : {}),
+        ...(progress !== st.progress ? { progress } : {}),
       };
     }),
 }));
+
+const docMigrations = new Set<Promise<void>>();
+export const flushDocMigrations = async () => {
+  while (docMigrations.size) await Promise.all([...docMigrations]);
+};
 
 /* Debounce streaming writes, but flush before the browser suspends the page.
    Each article is its own key, so a long answer being streamed rewrites only

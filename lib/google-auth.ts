@@ -70,6 +70,13 @@ export function signOutGoogle() {
   try { window.google?.accounts.id.disableAutoSelect(); } catch {}
 }
 
+/** An expired 1-hour JWT drops the credential while keeping SEEN, so One Tap can silently refresh it. */
+export function expireGoogleCredential() {
+  try { localStorage.removeItem(KEY); } catch {}
+  useGoogleAuth.setState({ credential: null, user: null, loaded: true });
+  promptGoogleRefresh();
+}
+
 /** A Google authorization happened on this device before, so One Tap may refresh it silently. */
 export function googleSeen(): boolean {
   try { return localStorage.getItem(SEEN) === "1"; } catch { return false; }
@@ -80,10 +87,11 @@ export function promptGoogleRefresh() {
 }
 
 export function googleAuthHeaders(): Record<string, string> {
+  if (!useGoogleAuth.getState().loaded) initGoogleAuth();
   const token = useGoogleAuth.getState().credential;
   if (!token) return {};
   if (!decodeGoogleCredential(token)) {
-    signOutGoogle();
+    expireGoogleCredential();
     return {};
   }
   return { Authorization: `Bearer ${token}` };

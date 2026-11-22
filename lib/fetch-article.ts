@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 import { imageStem, leadImage, prepareImages } from "@/lib/images";
 import { Readability } from "@mozilla/readability";
 import { htmlToBlocks } from "@/lib/html-to-blocks";
-import { slugify, tidyTitle, undash, type Article, type Block } from "@/lib/article";
+import { countWords, slugify, tidyTitle, undash, type Article, type Block } from "@/lib/article";
 import { APP_UA } from "@/lib/ai";
 
 const MAX_BYTES = 6_000_000;
@@ -274,7 +274,7 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
     blocks = [{ id: "b0", type: "figure", runs: [], src: lead }, ...blocks];
   }
   // A page drawn by scripts (a Google Doc, an app shell) leaves only its newsletter box and footer.
-  const words = blocks.reduce((n, b) => n + b.runs.map((r) => r.text).join("").split(/\s+/).filter(Boolean).length, 0);
+  const words = blocks.reduce((n, b) => n + countWords(b.runs.map((r) => r.text).join("")), 0);
   if (blocks.filter((b) => b.type === "p").length < 2 || words < MIN_WORDS) {
     return { ok: false, error: "That page has too little text to read here.", status: 422 };
   }

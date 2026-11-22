@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     const provider = visionProvider(await getProvider());
     if (!provider.baseUrl || !provider.model) return Response.json({error:"请先在 AI 设置中配置支持图片的模型。"},{status:401});
     const model = provider.visionModel || provider.model;
-    const history = Array.isArray(body.history) ? body.history.slice(-8).filter((x: {role?: string;content?:unknown}) => x && ["user","assistant"].includes(x.role ?? "") && typeof x.content === "string").map((x: {role:string;content:string}) => ({role:x.role,content:x.content.slice(-40000)})) : [];
+    const history = Array.isArray(body.history) ? body.history.slice(-6).filter((x: {role?: string;content?:unknown}) => x && ["user","assistant"].includes(x.role ?? "") && typeof x.content === "string").map((x: {role:string;content:string}) => ({role:x.role,content:x.content.slice(-16000)})) : [];
     const response = await fetch(provider.baseUrl + "/chat/completions", {
       method:"POST",signal:req.signal,headers:aiHeaders(provider),
       body:JSON.stringify({model,...visionGenerationOptions(model,8192),messages:[

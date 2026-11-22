@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   // unless the reader turned search off. Search retains its own request-rate guard.
   const canSearch = () => searchEnabled() && allow(`search:${clientId(req)}`, 150, 86_400_000);
   const forced = thread.action === "check" && canSearch();
-  const offerTool = !forced && searchEnabled() && body.search !== false;
+  const offerTool = !forced && body.search !== false && canSearch();
   const latest = [...history].reverse().find((m) => m.role === "user")?.content;
   const length = isLengthKey(body.length) ? body.length : "normal";
   const maxTokens = body.length === "long" ? 1400 : 900;
