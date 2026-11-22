@@ -1,4 +1,2 @@
-/** Public, build-time switch shared by the server and browser. */
-export const accountsEnabled =
-  process.env.NEXT_PUBLIC_DESKTOP_LOCAL !== "1" &&
-  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+/** Accounts are available on the web build. Whether Google is configured is read at runtime. */
+export const accountsEnabled = process.env.NEXT_PUBLIC_DESKTOP_LOCAL !== "1";

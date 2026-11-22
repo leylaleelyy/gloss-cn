@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { SignInButton, useAuth } from "@/components/account/Auth";
 import { Toast } from "@/components/reader/Overlays";
 import { useStore } from "@/lib/store";
+import { useGoogleAuth } from "@/lib/google-auth";
 
 import { accountsEnabled } from "@/lib/accounts";
 
@@ -25,13 +26,14 @@ function marks(st: ReturnType<typeof useStore.getState>) {
  */
 export function SignInNudge() {
   const { isLoaded, isSignedIn } = useAuth();
+  const configured = useGoogleAuth((s) => s.configured);
   const hydrated = useStore((s) => s.hydrated);
   const count = useStore(marks);
   const prev = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!accountsEnabled || !hydrated || !isLoaded) return;
+    if (!accountsEnabled || !hydrated || !isLoaded || configured !== true) return;
     const before = prev.current;
     prev.current = count;
     // Only a mark made just now counts, not what was already there on load.
@@ -47,7 +49,7 @@ export function SignInNudge() {
     } catch {}
     // A beat after the mark lands, so it reads as a follow-up rather than an interruption.
     setTimeout(() => setOpen(true), 900);
-  }, [count, hydrated, isLoaded, isSignedIn]);
+  }, [count, hydrated, isLoaded, isSignedIn, configured]);
 
   useEffect(() => {
     if (!open) return;

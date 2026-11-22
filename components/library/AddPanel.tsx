@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { AlertCircle, BookOpen, BookmarkPlus, Check, Copy, FileUp, Link2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { importFromUrl, importFromFile, keep, looksLikeUrl } from "@/lib/import";
 import { accountsEnabled } from "@/lib/accounts";
+import { googleAuthHeaders, useGoogleAuth } from "@/lib/google-auth";
 import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
 import { Mark, MarkStack, type AgentMark } from "./AgentMarks";
@@ -295,6 +296,7 @@ const LABELS: { label: string; mark?: AgentMark }[] = [
 
 function Agent({ signedIn }: { signedIn: boolean }) {
   const { t } = useI18n();
+  const configured = useGoogleAuth((state) => state.configured);
   const [conns, setConns] = useState<Conn[] | null>(null);
   const [made, setMade] = useState<{ token: string; label: string } | null>(null);
   const [label, setLabel] = useState("Grok Bot");
@@ -304,7 +306,7 @@ function Agent({ signedIn }: { signedIn: boolean }) {
 
   useEffect(() => {
     if (!signedIn) return;
-    fetch("/api/agent-tokens")
+    fetch("/api/agent-tokens", { headers: googleAuthHeaders() })
       .then((r) => r.json())
       .then((j: { tokens?: Conn[] }) => setConns(j.tokens ?? []))
       .catch(() => setConns([]));
@@ -315,8 +317,8 @@ function Agent({ signedIn }: { signedIn: boolean }) {
       <div className="mt-5">
         <AgentIntro />
         <div className="mt-4 rounded-[14px] border border-rule bg-bg px-4 py-4">
-          <p className="text-[13.5px] leading-relaxed text-ink-2">{accountsEnabled ? t("agent.signInBody") : t("agent.accountsOff")}</p>
-          {accountsEnabled && (
+          <p className="text-[13.5px] leading-relaxed text-ink-2">{accountsEnabled && configured === true ? t("agent.signInBody") : t("agent.accountsOff")}</p>
+          {accountsEnabled && configured === true && (
             <SignInButton mode="modal">
               <button type="button" className="add-btn mt-3">
                 {t("agent.signIn")}
@@ -330,7 +332,7 @@ function Agent({ signedIn }: { signedIn: boolean }) {
   const create = async () => {
     setBusy(true);
     setErr(null);
-    const res = await fetch("/api/agent-tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
+    const res = await fetch("/api/agent-tokens", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ label }) });
     const j = (await res.json().catch(() => ({}))) as { id?: string; token?: string; label?: string; error?: string };
     setBusy(false);
     if (!res.ok || !j.token || !j.id) return setErr(j.error ?? "Could not make a connection. Try again.");
@@ -340,7 +342,7 @@ function Agent({ signedIn }: { signedIn: boolean }) {
 
   const revoke = async (id: string) => {
     setConns((c) => c?.filter((x) => x.id !== id) ?? null);
-    await fetch(`/api/agent-tokens?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+    await fetch(`/api/agent-tokens?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: googleAuthHeaders() }).catch(() => {});
   };
 
   return (

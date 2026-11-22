@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+// Exposes the D1 binding from wrangler.jsonc to `next dev` (local SQLite).
+initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   ...(process.env.GLOSS_DESKTOP === "1" ? { output: "standalone", distDir: ".next-desktop" } as const : {}),

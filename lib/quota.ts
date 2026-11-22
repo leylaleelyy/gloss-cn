@@ -5,14 +5,13 @@
  * counted. A ceiling across everyone keeps a rush of visitors bounded.
  * Reading aloud is never free: it uses the reader's own key.
  *
- * Spent per day in Postgres, so the limit holds across serverless instances.
- * Signed-out readers are counted by a hash of their address. Without a
- * database (local dev), it falls back to a per-instance tally.
+ * A per-instance tally, keyed by day. The main reading routes use the
+ * reader's own provider key, so this only covers shared-key helpers such as
+ * agent sorting. Signed-out readers are counted by a hash of their address.
  */
 
 import { createHash } from "node:crypto";
 import { auth } from "@/lib/auth";
-import { db } from "./db";
 import { allow, clientId } from "./ratelimit";
 import { estimateTokens } from "./tokens";
 
@@ -45,15 +44,6 @@ function memAdd(subject: string, usd: number) {
 }
 
 async function spent(subject: string): Promise<{ mine: number; all: number }> {
-  if (process.env.DATABASE_URL) {
-    try {
-      const rows = await db().query("select subject, usd from free_usage where day = current_date and subject in ($1, $2)", [subject, ALL]);
-      const get = (s: string) => Number(rows.find((r) => r.subject === s)?.usd ?? 0);
-      return { mine: get(subject), all: get(ALL) };
-    } catch {
-      // The database is unreachable: fall through to the per-instance tally rather than block everyone.
-    }
-  }
   return { mine: memSpent(subject), all: memSpent(ALL) };
 }
 
@@ -85,16 +75,6 @@ export const estimateUsd = (text: string, inPerM: number) => (estimateTokens(tex
 /** Record what a request on the shared key cost, against the reader and against everyone. */
 export async function chargeFree(subject: string, usd: number) {
   if (!(usd > 0)) return;
-  if (process.env.DATABASE_URL) {
-    try {
-      await db().query(
-        `insert into free_usage (subject, day, count, usd) values ($1, current_date, 1, $3), ($2, current_date, 1, $3)
-         on conflict (subject, day) do update set count = free_usage.count + 1, usd = free_usage.usd + excluded.usd`,
-        [subject, ALL, usd]
-      );
-      return;
-    } catch {}
-  }
   memAdd(subject, usd);
   memAdd(ALL, usd);
 }

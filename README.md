@@ -12,7 +12,7 @@
 - A configurable OpenAI-compatible API for chat, summaries, and vision OCR
 - [Exa](https://exa.ai) for web search
 - [LiteParse](https://github.com/run-llama/liteparse) for in-browser PDF parsing, with your configured vision model for scanned pages
-- [Clerk](https://clerk.com) for optional auth and [Neon](https://neon.tech) for syncing your library
+- Google sign-in for optional accounts, and Cloudflare D1 for syncing your library
 - Next.js app router with Tailwind
 
 ## Cloning & running
@@ -20,10 +20,10 @@
 1. Clone the repo: `git clone https://github.com/Nutlope/gloss`
 2. Create a `.env.local` file (use `.env.example` for reference) and add your API keys:
    - Optional AI defaults: `AI_BASE_URL`, `AI_MODEL`, and `AI_API_KEY` (or use **AI settings** in the app).
-   - **Database URL** from [Neon](https://neon.tech): `DATABASE_URL=`
-   - **Clerk keys** from [Clerk](https://clerk.com): `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=` and `CLERK_SECRET_KEY=`
+   - **Google Client ID** from Google Cloud Console: `GOOGLE_CLIENT_ID=` (runtime)
+   - Cloudflare D1 is already bound as `DB` in `wrangler.jsonc`
    - **Exa API key** (optional, for web search): `EXA_API_KEY=`
-3. Run `npm install`. Run `npm run db:migrate` only if you configured cloud sync.
+3. Run `npm install`. Run `npm run db:migrate` to create the D1 sync tables.
 4. Run `npm run dev` and open http://localhost:3100
 
 ## Future Tasks
@@ -59,26 +59,21 @@ Desktop scrollbars follow the current paper/ink theme with rounded thumbs and st
 
 ## Google sign-in and multi-device sync
 
-Accounts are optional. When Clerk and Neon are configured, a reader can sign in
-with Google and their library, questions, notes, highlights, reading progress
-and vocabulary follow them to every device.
+Accounts are optional. Signed-in readers keep their library, questions, notes,
+highlights, reading progress, vocabulary and learning preferences across
+devices. The browser stays local-first; a small sync route mirrors changes.
 
-1. Create a Clerk application, enable **Google** under Social connections, and
-   add the site origin (for local work, `http://localhost:3100`) and
-   `/sso-callback` to the allowed redirect URLs.
-2. Create a Neon Postgres database, put its URL in `.env.local`, and run
-   `npm run db:migrate`. The schema includes the `vocabulary` and `learning`
-   tables used for vocabulary sync.
-3. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` and
-   `DATABASE_URL` locally and as Cloudflare secrets:
-   `npx wrangler secret put NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (build-time),
-   `npx wrangler secret put CLERK_SECRET_KEY`, and
-   `npx wrangler secret put DATABASE_URL`.
-4. Rebuild and deploy. Signed-out readers stay local; signing in merges the
-   local shelf into the account and syncs in both directions.
-
-Without Clerk keys the sign-in control stays hidden; without `DATABASE_URL`
-the sync routes cannot store anything.
+1. In Google Cloud Console create an **OAuth Client ID** for a Web application,
+   and add the site origin to **Authorized JavaScript origins**:
+   `https://gloss.leylalee.xyz` and, for local work, `http://localhost:3100`.
+2. Put the public client ID in `.env.local` as
+   `GOOGLE_CLIENT_ID=...`, or set it as a Cloudflare variable/secret. No Google client secret is needed: the
+   server verifies the Google ID token against Google's published keys.
+3. The D1 database `gloss-cn` is bound as `DB` in `wrangler.jsonc`. Create its
+   tables with `npm run db:migrate` (remote) or `npm run db:migrate:local`
+   (local `next dev`).
+4. Build and deploy. Without a client ID the sign-in control stays hidden;
+   readers can keep reading locally.
 
 ## Cloudflare Workers
 
@@ -93,7 +88,7 @@ desktop build and its local library remain separate.
 Readers can configure an OpenAI-compatible provider in **AI settings**.
 Do not put private provider keys into Git or `NEXT_PUBLIC_*` variables.
 Optional shared server defaults belong in Cloudflare secrets; enabling them
-makes that provider available to visitors. Clerk and Neon are optional.
+makes that provider available to visitors. Google sign-in and D1 sync are optional.
 
 The Web pronunciation controls use installed browser/system US and UK English
 voices. Desktop pronunciation uses the bundled eSpeak runtime and PipeWire.

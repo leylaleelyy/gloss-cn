@@ -11,7 +11,7 @@
 import { hashToken, looksLikeToken } from "./agent";
 import { normalizeUrl } from "./links";
 import { blockText, textToArticle, wordCount, type Article } from "./article";
-import { shelfOf, shelveForUser, tokenUser, type ShelfRow } from "./db";
+import { shelfOf, shelveForUser, storageConfigured, tokenUser, type ShelfRow } from "./db";
 import { arxivFullText, fetchArticle, notAnArticle } from "./fetch-article";
 import { TOPIC, TOPICS, isTopic, yearOf, type TopicKey } from "./library";
 import { chargeFree, checkFreeUser } from "./quota";
@@ -123,7 +123,7 @@ export async function handle(req: Request, pathToken?: string): Promise<Response
 
   const header = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const token = looksLikeToken(header) ? header : looksLikeToken(pathToken) ? pathToken : null;
-  if (!process.env.DATABASE_URL) return fail(first.id, -32000, "The Gloss library is not available on this server.", 503);
+  if (!storageConfigured()) return fail(first.id, -32000, "The Gloss library is not available on this server.", 503);
   let who: { userId: string; label: string } | null = null;
   try {
     who = token ? await tokenUser(hashToken(token)) : null;

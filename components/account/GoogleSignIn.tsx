@@ -1,60 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { useSignIn } from "@clerk/nextjs/legacy";
-import { LoaderCircle } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { accountsEnabled } from "@/lib/accounts";
+import { openGoogleSignIn } from "@/lib/google-auth";
 import { useI18n } from "@/lib/ui-lang";
 
-/** A Google-only sign-in button. Clerk owns the OAuth exchange; this starts it. */
+/** A Google-branded entry point that opens the shared identity dialog. */
 export function GoogleSignIn({ className = "", label, onStart }: { className?: string; label?: string; onStart?: () => void }) {
-  if (!accountsEnabled) return null;
-  return <ClerkGoogle className={className} label={label} onStart={onStart} />;
-}
-
-function ClerkGoogle({ className, label, onStart }: { className: string; label?: string; onStart?: () => void }) {
   const { t } = useI18n();
-  const { isLoaded, signIn } = useSignIn();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const text = label ?? t("auth.google");
-
-  const start = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    onStart?.();
-    try {
-      if (!isLoaded || !signIn) throw new Error(t("auth.notReady"));
-      await signIn.authenticateWithRedirect({
-        strategy: "oauth_google",
-        redirectUrl: `${window.location.origin}/sso-callback`,
-        redirectUrlComplete: window.location.href,
-      });
-    } catch (e) {
-      setBusy(false);
-      setError(e instanceof Error ? e.message : t("auth.failed"));
-    }
-  };
-
+  if (!accountsEnabled) return null;
   return (
-    <span className="block">
-      <button
-        type="button"
-        onClick={() => void start()}
-        disabled={busy}
-        aria-label={text}
-        className={`inline-flex h-10 w-full items-center justify-center gap-2.5 rounded-full border border-rule-strong bg-white px-4 text-[13.5px] font-medium text-[#1f1f1f] shadow-[0_1px_2px_rgb(0_0_0/0.06)] transition-[border-color,transform] hover:border-[#8a8a8a] active:scale-[0.98] disabled:opacity-60 ${className}`}
-      >
-        {busy ? <LoaderCircle size={16} className="animate-spin" aria-hidden /> : <GoogleMark />}
-        {text}
-      </button>
-      {error && <span role="alert" className="mt-2 block text-[12px] leading-snug text-rubric-text">{error}</span>}
-    </span>
+    <button
+      type="button"
+      onClick={() => {
+        onStart?.();
+        openGoogleSignIn();
+      }}
+      aria-label={label ?? t("auth.google")}
+      className={`inline-flex h-10 w-full items-center justify-center gap-2.5 rounded-full border border-rule-strong bg-white px-4 text-[13.5px] font-medium text-[#1f1f1f] shadow-[0_1px_2px_rgb(0_0_0/0.06)] transition-[border-color,transform] hover:border-[#8a8a8a] active:scale-[0.98] ${className}`}
+    >
+      <GoogleMark />
+      {label ?? t("auth.google")}
+    </button>
   );
 }
 
-function GoogleMark() {
+export function GoogleMark() {
   return (
     <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden focusable="false">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.2 3.6l6.85-6.85C35.9 2.38 30.4 0 24 0 14.62 0 6.5 5.38 2.56 13.22l7.98 6.2C12.44 13.7 17.74 9.5 24 9.5Z" />

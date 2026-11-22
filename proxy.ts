@@ -1,16 +1,13 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
-import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
-import { accountsEnabled } from "@/lib/accounts";
+import { NextResponse, type NextRequest } from "next/server";
 
-// Signing in is optional: nothing is protected here. Routes that need a user check auth() themselves.
-const clerk = clerkMiddleware();
-export default function proxy(request: NextRequest, event: NextFetchEvent) {
-  return accountsEnabled ? clerk(request, event) : NextResponse.next();
+// Accounts, when enabled, are verified per API request with a Google ID token.
+// Nothing is protected at the edge.
+export default function proxy(_request: NextRequest) {
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    // Skip Next internals and static files, unless found in search params.
     "/((?!desktop-transfer|_next|[^?]*\\.(?:html?|css|js(?!on)|mjs|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
   ],

@@ -1,6 +1,6 @@
 import { providerConfigured } from "@/lib/provider";
 import { auth } from "@/lib/auth";
-import { saveCover } from "@/lib/db";
+import { saveCover, storageConfigured } from "@/lib/db";
 import { isTopic } from "@/lib/library";
 import { paintCover } from "@/lib/paint";
 import { needKey } from "@/lib/quota";
@@ -30,6 +30,6 @@ export async function POST(req: Request) {
   if (!r.ok) return Response.json({ error: r.error }, { status: 502 });
 
   const { userId } = await auth();
-  if (userId && process.env.DATABASE_URL) await saveCover(userId, id, r.jpeg).catch(() => {});
+  if (userId && storageConfigured()) await saveCover(userId, id, r.jpeg).catch(() => {});
   return new Response(new Blob([r.jpeg as Uint8Array<ArrayBuffer>]), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store" } });
 }

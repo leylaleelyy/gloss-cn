@@ -12,6 +12,7 @@ import { providerHeaders } from "@/lib/provider-config";
 import { readApiKey } from "./ask";
 import { isTopic } from "./library";
 import { useStore, type LibraryItem } from "./store";
+import { googleAuthHeaders } from "./google-auth";
 
 const DB = "gloss-covers";
 const STORE = "covers";
@@ -50,7 +51,7 @@ export async function paintedUrl(id: string): Promise<string | null> {
   let blob = (await tx<Blob>("readonly", (s) => s.get(id))) ?? null;
   if (!blob) {
     try {
-      const res = await fetch(`/api/covers/${encodeURIComponent(id)}`);
+      const res = await fetch(`/api/covers/${encodeURIComponent(id)}`, { headers: googleAuthHeaders() });
       if (res.ok) {
         blob = await res.blob();
         await tx("readwrite", (s) => s.put(blob, id));
@@ -71,7 +72,7 @@ export async function paint(item: LibraryItem): Promise<"ok" | "rest" | "error">
   try {
     const res = await fetch("/api/covers", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...providerHeaders() },
+      headers: { "Content-Type": "application/json", ...providerHeaders(), ...googleAuthHeaders() },
       body: JSON.stringify({ id: item.id, scene: item.scene, topic: item.topic, apiKey: readApiKey() || undefined }),
     });
     if (res.status === 429 || res.status === 401) return "rest";

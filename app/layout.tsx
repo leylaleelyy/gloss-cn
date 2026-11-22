@@ -4,7 +4,7 @@ import { Atkinson_Hyperlegible_Next, Literata, Newsreader, Schibsted_Grotesk } f
 import { BOOT_SCRIPT } from "@/lib/settings";
 import "./globals.css";
 import { Tooltips } from "@/components/ui/Tooltips";
-import { ClerkProvider } from "@/components/account/Auth";
+import { GoogleProvider } from "@/components/account/GoogleProvider";
 import { SyncAgent } from "@/components/account/SyncAgent";
 import { OG_IMAGE, SITE_URL } from "@/lib/brand";
 
@@ -59,22 +59,6 @@ export const viewport: Viewport = {
   ],
 };
 
-/** Clerk's sign-in and account screens, in the page's own ink and paper, in every theme. */
-const CLERK_APPEARANCE = {
-  variables: {
-    colorPrimary: "var(--ink)",
-    colorBackground: "var(--bg-raised)",
-    colorForeground: "var(--ink)",
-    colorMutedForeground: "var(--ink-3)",
-    colorInput: "var(--bg)",
-    colorInputForeground: "var(--ink)",
-    colorBorder: "var(--rule-strong)",
-    colorNeutral: "var(--ink)",
-    fontFamily: "var(--font-sans)",
-    borderRadius: "12px",
-  },
-};
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-desktop={process.env.NEXT_PUBLIC_DESKTOP_LOCAL === "1" ? "true" : undefined} className={`${serif.variable} ${sans.variable} ${book.variable} ${legible.variable}`} suppressHydrationWarning>
@@ -82,10 +66,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
       <body>
-        <ClerkProvider appearance={CLERK_APPEARANCE}>
+        <GoogleProvider>
           {children}
           <SyncAgent />
-        </ClerkProvider>
+        </GoogleProvider>
         <Tooltips />
         {/* Plausible: cookieless page views, from the production site only, so previews and local runs never count. */}
         {process.env.VERCEL_ENV === "production" && <Script defer data-domain="usegloss.io" src="https://plausible.io/js/script.js" strategy="afterInteractive" />}

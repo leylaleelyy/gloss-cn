@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 3100",
     "lint": "tsc --noEmit",
-    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
+    "db:migrate": "wrangler d1 execute gloss-cn --remote --file=db/schema.sql",
     "desktop:build": "node scripts/desktop-build.mjs",
     "desktop:start": "desktop/out/Gloss/Gloss",
     "desktop:install": "node scripts/desktop-install.mjs",
@@ -32,13 +32,13 @@
     "test:reader-reliability": "node scripts/test-book-settings.mjs && node scripts/test-store-persistence.mjs && node scripts/test-touch-selection.mjs && node scripts/test-shelving.mjs",
     "test:book-open": "node scripts/test-book-open.mjs",
     "test:ui-language": "node scripts/test-ui-language.mjs",
-    "test:vocabulary-page": "node scripts/test-vocabulary-page.mjs"
+    "test:vocabulary-page": "node scripts/test-vocabulary-page.mjs",
+    "db:migrate:local": "wrangler d1 execute gloss-cn --local --file=db/schema.sql",
+    "test:google-auth": "node scripts/test-google-auth.mjs"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.9.13",
     "@llamaindex/liteparse-wasm": "2.15.1",
     "@mozilla/readability": "^0.6.0",
-    "@neondatabase/serverless": "^1.2.0",
     "fflate": "^0.8.3",
     "linkedom": "^0.18.13",
     "lucide-react": "^1.53.0",

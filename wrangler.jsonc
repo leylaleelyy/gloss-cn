@@ -1,12 +1,39 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gloss-cn",
-  "routes": [{ "pattern": "gloss.leylalee.xyz", "custom_domain": true }],
+  "routes": [
+    {
+      "pattern": "gloss.leylalee.xyz",
+      "custom_domain": true
+    }
+  ],
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-01",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
-  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "gloss-cn" }],
-  "images": { "binding": "IMAGES" },
-  "observability": { "enabled": true }
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "gloss-cn"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gloss-cn",
+      "database_id": "5413d75e-2c93-4327-be0d-7c5140d8a5ef"
+    }
+  ]
 }

@@ -24,6 +24,7 @@ import type { Article } from "./article";
 import { forgetCover } from "./covers";
 import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
+import { googleAuthHeaders, signOutGoogle } from "./google-auth";
 
 const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning"] as const;
 type Collection = (typeof COLLECTIONS)[number];
@@ -39,7 +40,7 @@ const MAX_BODY = 4_300_000;
 /** Pulls overlap a little, so a write that landed while the last pull ran is not missed. Applying a row twice is harmless. */
 const OVERLAP_MS = 30_000;
 
-/** JSON with sorted keys, so the same object always compares equal, whatever order Postgres hands keys back in. */
+/** JSON with sorted keys, so the same object always compares equal, whatever order SQLite hands keys back in. */
 function stable(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
   if (v && typeof v === "object")
@@ -147,7 +148,8 @@ export function startSync(userId: string) {
       if (!batch.length) return;
       const changes: Partial<Record<Collection, OutRow[]>> = {};
       for (const r of batch) (changes[r.c] ??= []).push(r.row);
-      const res = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }) });
+      const res = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ changes }) });
+      if (res.status === 401) signOutGoogle();
       if (!res.ok) throw new Error(`push ${res.status}`);
       for (const r of batch) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
@@ -167,7 +169,8 @@ export function startSync(userId: string) {
 
   async function pull() {
     const q = base.since ? `?since=${encodeURIComponent(new Date(Date.parse(base.since) - OVERLAP_MS).toISOString())}` : "";
-    const res = await fetch(`/api/sync${q}`);
+    const res = await fetch(`/api/sync${q}`, { headers: googleAuthHeaders() });
+    if (res.status === 401) signOutGoogle();
     if (!res.ok) throw new Error(`pull ${res.status}`);
     const { now, changes } = (await res.json()) as { now: string; changes: RemoteChanges };
 
@@ -256,7 +259,7 @@ export function startSync(userId: string) {
 /** Fetch one text from the account and keep it on this device. Null when signed out or not there. */
 export async function fetchText(id: string): Promise<Article | null> {
   try {
-    const res = await fetch(`/api/articles/${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/articles/${encodeURIComponent(id)}`, { headers: googleAuthHeaders() });
     if (!res.ok) return null;
     const { doc } = (await res.json()) as { doc: Article };
     await saveDoc(doc);
