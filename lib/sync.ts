@@ -26,6 +26,7 @@ import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
 import { googleAuthHeaders, signOutGoogle } from "./google-auth";
 import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
+import { gzipSync } from "fflate";
 import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
 import { confirmSyncDeletions } from "./sync-guard";
 import { SYNCED_SETTING_KEYS } from "./settings";
@@ -35,9 +36,9 @@ type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-const BASELINE_VERSION = 2;
-type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string]>> };
-type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: Article };
+const BASELINE_VERSION = 3;
+type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1]>> };
+type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown };
 
 /** Pushes are split to stay well under the 4.5MB request cap. */
 const BATCH_BYTES = 1_500_000;
@@ -45,6 +46,16 @@ const MAX_BODY = 4_300_000;
 /** A stalled request must not leave the badge on "Syncing" forever. */
 const PULL_TIMEOUT = 30_000;
 const PUSH_TIMEOUT = 120_000;
+
+/** Long texts ride compressed so a large EPUB fits the request and D1 row limits. */
+function packDoc(doc: Article): unknown {
+  const text = JSON.stringify(doc);
+  if (text.length < 700_000) return doc;
+  const bytes = gzipSync(new TextEncoder().encode(text));
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return { __gz: btoa(binary) };
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
@@ -155,14 +166,19 @@ export function startSync(userId: string) {
     for (const c of COLLECTIONS) {
       const seen = base.seen[c];
       for (const [id, e] of entities[c]) {
-        if (seen[id]?.[0] === e.key) continue;
-        const row: OutRow = { id, articleId: e.articleId, data: e.data };
+        const seenEntry = seen[id];
+        const dataChanged = seenEntry?.[0] !== e.key;
+        let row: OutRow | null = dataChanged ? { id, articleId: e.articleId, data: e.data } : null;
         // A text goes up with its first shelf entry, and again when it is replaced (its rev changes).
-        // Samples ship with the app.
+        // Samples ship with the app. A text already on the shelf still uploads a missing document.
         if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
           const doc = await loadDoc(id);
-          if (doc) row.doc = doc;
+          if (doc && (row || !seenEntry?.[2])) {
+            row ??= { id, articleId: e.articleId, data: e.data };
+            row.doc = packDoc(doc);
+          }
         }
+        if (!row) continue;
         rows.push({ c, row, key: e.key, size: JSON.stringify(row).length });
       }
       for (const [id, [, articleId]] of Object.entries(seen)) {
@@ -209,7 +225,10 @@ export function startSync(userId: string) {
       if (!res.ok) throw new Error(`push ${res.status}`);
       for (const r of batch) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
-        else base.seen[r.c][r.row.id] = [r.key, r.row.articleId];
+        else {
+          const previous = base.seen[r.c][r.row.id];
+          base.seen[r.c][r.row.id] = [r.key, r.row.articleId, r.c === "articles" && r.row.doc !== undefined ? 1 : previous?.[2]];
+        }
       }
       clearArticleDeletions(batch.filter((r) => r.c === "articles" && r.row.deleted).map((r) => r.row.id));
       save();
@@ -256,7 +275,7 @@ export function startSync(userId: string) {
       for (const r of changes[c] ?? []) {
         const e = entities[c].get(r.id);
         if (r.deleted) delete base.seen[c][r.id];
-        else if (e) base.seen[c][r.id] = [e.key, e.articleId];
+        else if (e) base.seen[c][r.id] = [e.key, e.articleId, c === "articles" ? (r.hasDoc ? 1 : 0) : undefined];
       }
     }
     base.since = now;

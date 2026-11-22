@@ -7,6 +7,7 @@
  */
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { gunzipSync } from "fflate";
 
 type D1Result<T> = { results?: T[]; success?: boolean; meta?: { changes?: number } };
 type D1Statement = {
@@ -43,7 +44,7 @@ export type Collection = (typeof COLLECTIONS)[number];
 export const isCollection = (v: unknown): v is Collection => typeof v === "string" && (COLLECTIONS as readonly string[]).includes(v);
 
 export type PushRow = { id: string; article_id: string; data: unknown; deleted: boolean; doc?: unknown };
-export type PullRow = { id: string; articleId: string; data: unknown; deleted: boolean };
+export type PullRow = { id: string; articleId: string; data: unknown; deleted: boolean; hasDoc?: boolean };
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
 const json = (v: unknown) => JSON.stringify(v ?? {});
@@ -52,20 +53,32 @@ const parse = (v: unknown) => {
   try { return JSON.parse(v) as unknown; } catch { return {}; }
 };
 
+/** A large text may arrive gzipped from the browser to fit the request and D1 limits. */
+function unpackDoc(value: string): unknown {
+  const data = parse(value);
+  if (data && typeof data === "object" && typeof (data as { __gz?: unknown }).__gz === "string") {
+    try {
+      const text = new TextDecoder().decode(gunzipSync(base64ToBytes((data as { __gz: string }).__gz)));
+      return JSON.parse(text) as unknown;
+    } catch {}
+  }
+  return data;
+}
+
 /** Rows changed since `since` in every collection, tombstones included, plus the server clock to pull from next time. */
 export async function pullRows(userId: string, since: string): Promise<{ now: string; changes: Record<Collection, PullRow[]> }> {
   const database = d1();
   const statements = [
     database.prepare(`select ${NOW} as now`),
     ...COLLECTIONS.map((table) =>
-      database.prepare(`select id, article_id, data, deleted from ${table} where user_id = ? and updated_at > ? order by updated_at`).bind(userId, since)
+      database.prepare(`select id, article_id, data, deleted${table === "articles" ? ", doc is not null as has_doc" : ""} from ${table} where user_id = ? and updated_at > ? order by updated_at`).bind(userId, since)
     ),
   ];
   const results = await database.batch(statements);
   const clock = (results[0]?.results?.[0] as { now?: string } | undefined)?.now ?? new Date().toISOString();
   const changes = Object.fromEntries(
     COLLECTIONS.map((table, index) => {
-      const rows = (results[index + 1]?.results ?? []) as { id: string; article_id: string; data: unknown; deleted: number }[];
+      const rows = (results[index + 1]?.results ?? []) as { id: string; article_id: string; data: unknown; deleted: number; has_doc?: number }[];
       return [
         table,
         rows.map((row) => ({
@@ -73,6 +86,7 @@ export async function pullRows(userId: string, since: string): Promise<{ now: st
           articleId: String(row.article_id),
           data: row.deleted ? null : parse(row.data),
           deleted: Boolean(row.deleted),
+          ...(table === "articles" ? { hasDoc: Boolean(row.has_doc) } : {}),
         })),
       ];
     })
@@ -120,7 +134,7 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
 /** One article's full text. */
 export async function articleDoc(userId: string, id: string): Promise<unknown | null> {
   const row = await d1().prepare("select doc from articles where user_id = ? and id = ? and deleted = 0 and doc is not null").bind(userId, id).first<{ doc?: string }>();
-  return row?.doc ? parse(row.doc) : null;
+  return row?.doc ? unpackDoc(row.doc) : null;
 }
 
 /* ---------- painted covers ---------- */
