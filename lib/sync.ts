@@ -117,7 +117,16 @@ export function startSync(userId: string) {
   let base: Baseline = emptyBaseline();
   try {
     const raw = localStorage.getItem(storeKey);
-    if (raw) base = { ...emptyBaseline(), ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<Baseline>;
+      // A baseline from an older build may know fewer collections. Fill every
+      // collection in, or the first push of a newly synced one reads undefined.
+      const empty = emptyBaseline();
+      base = {
+        since: saved.since ?? null,
+        seen: Object.fromEntries(COLLECTIONS.map((c) => [c, saved.seen?.[c] ?? empty.seen[c]])) as Baseline["seen"],
+      };
+    }
   } catch {}
   const save = () => {
     try {
