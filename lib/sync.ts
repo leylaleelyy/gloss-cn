@@ -174,13 +174,11 @@ const emptyBaseline = (): Baseline => ({ version: BASELINE_VERSION, since: null,
 export function startSync(userId: string) {
   const storeKey = `gloss:sync:${userId}`;
   let base: Baseline = emptyBaseline();
-  let repackImages = false;
   const alreadyRepacked = repackedImages();
   try {
     const raw = localStorage.getItem(storeKey);
     if (raw) {
       const saved = JSON.parse(raw) as Partial<Baseline>;
-      repackImages = saved.version !== BASELINE_VERSION;
       if (saved.version === BASELINE_VERSION) {
         // A baseline from an older build may know fewer collections. Fill every
         // collection in, or the first push of a newly synced one reads undefined.
@@ -191,8 +189,8 @@ export function startSync(userId: string) {
           seen: Object.fromEntries(COLLECTIONS.map((c) => [c, saved.seen?.[c] ?? empty.seen[c]])) as Baseline["seen"],
         };
       }
-    } else repackImages = true;
-  } catch { repackImages = true; }
+    }
+  } catch {}
   const save = () => {
     try {
       localStorage.setItem(storeKey, JSON.stringify(base));
@@ -222,7 +220,9 @@ export function startSync(userId: string) {
         if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
           const doc = await loadDoc(id);
           const images = Boolean(doc && hasEmbeddedImages(doc));
-          const needsRepack = Boolean(doc && repackImages && images && !alreadyRepacked.has(id));
+          // Keep retrying until this device actually gets its picture-bearing text to D1.
+          // A baseline reset alone must not become the only chance to repair it.
+          const needsRepack = Boolean(doc && images && !alreadyRepacked.has(id));
           if (doc && (row || !seenEntry?.[2] || needsRepack)) {
             row ??= { id, articleId: e.articleId, data: e.data };
             row.data = { ...(e.data as Record<string, unknown>), docAt: Date.now() };
