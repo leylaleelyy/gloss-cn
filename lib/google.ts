@@ -4,6 +4,8 @@
  * checks it against Google's published keys and our client id.
  */
 
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
 type GoogleClaims = {
   iss?: string;
   aud?: string | string[];
@@ -17,8 +19,6 @@ type GoogleClaims = {
 
 type Jwk = JsonWebKey & { kid?: string };
 let keys: { at: number; value: Jwk[] } | null = null;
-
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
 async function googleKeys(): Promise<Jwk[]> {
   if (keys && Date.now() - keys.at < 3_600_000) return keys.value;
@@ -39,7 +39,13 @@ const bytes = (text: string) => {
 
 /** A verified reader, or null for a missing, malformed, expired or foreign token. */
 export async function verifyGoogleIdToken(token: string): Promise<{ userId: string; email: string; name: string; picture?: string } | null> {
-  if (!CLIENT_ID) return null;
+  let clientId = "";
+  try {
+    const value = (getCloudflareContext().env as Record<string, unknown>).GOOGLE_CLIENT_ID;
+    if (typeof value === "string") clientId = value;
+  } catch {}
+  clientId ||= process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+  if (!clientId) return null;
   const [head, payload, signature] = token.split(".");
   if (!head || !payload || !signature) return null;
 
@@ -54,7 +60,7 @@ export async function verifyGoogleIdToken(token: string): Promise<{ userId: stri
   if (header.alg !== "RS256" || !header.kid) return null;
   if (claims.iss !== "accounts.google.com" && claims.iss !== "https://accounts.google.com") return null;
   const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-  if (!audience.includes(CLIENT_ID)) return null;
+  if (!audience.includes(clientId)) return null;
   if (!claims.sub || !claims.email || !claims.exp || claims.exp * 1000 <= Date.now()) return null;
   if (claims.email_verified === false) return null;
 

@@ -47,9 +47,10 @@ mise for the build script. The tested NSH version is 0.2.0.
 
 The web build stays in `.next`; the desktop build uses `.next-desktop` and sets
 `NEXT_PUBLIC_DESKTOP_LOCAL=1`. The desktop edition has local reading and library
-storage with account/cloud sync controls disabled. The regular web edition still
-uses Clerk when its publishable key is configured; without it, it also supports
-anonymous local reading. Account-only API routes remain unauthorized locally.
+storage with account/cloud sync controls disabled. The regular web edition uses Google
+sign-in and Cloudflare D1 when configured; without a Google client ID, it also
+supports anonymous local reading. Account-only API routes remain unauthorized
+locally.
 
 Open **AI settings** and enter your OpenAI-compatible API base URL, exact chat model ID, and an optional API key. Private runtime defaults can supply a provider. Online imports,
 AI and optional remote services still require network access. No `.env` files are

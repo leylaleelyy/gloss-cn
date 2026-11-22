@@ -113,7 +113,8 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
   for (const row of (changes.articles ?? []).filter((r) => r.deleted)) {
     statements.push(database.prepare("delete from covers where user_id = ? and id = ?").bind(userId, row.id));
   }
-  if (statements.length) await database.batch(statements);
+  // D1 batches are bounded; keep each one modest so a large import can still land.
+  for (let i = 0; i < statements.length; i += 100) await database.batch(statements.slice(i, i + 100));
 }
 
 /** One article's full text. */
