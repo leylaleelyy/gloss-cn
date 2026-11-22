@@ -43,7 +43,10 @@ export async function POST(req: Request) {
   if ((thread.quote?.length ?? 0) > 12_000 || (thread.question?.length ?? 0) > 4_000) {
     return Response.json({ error: "That selection or question is too long." }, { status: 413 });
   }
-  const history = (body.history ?? []).slice(-12).filter((m) => m && (m.role === "user" || m.role === "assistant"));
+  const history = (body.history ?? [])
+    .slice(-12)
+    .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+    .map((m) => ({ ...m, content: m.content.slice(-16_000) }));
 
   const model = isModelKey(body.model) ? body.model : DEFAULT_MODEL;
   const headerKey = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();

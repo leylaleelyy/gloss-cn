@@ -85,9 +85,9 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
     const dec = new TextDecoder();
     let buf = "";
     let pending = "";
-    let raf = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const flush = () => {
-      raf = 0;
+      timer = null;
       if (!pending) return;
       const chunk = pending;
       pending = "";
@@ -108,9 +108,9 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
           continue;
         }
         if (e.type === "content") {
-          // Batch tokens into animation frames so a fast model never janks the page.
+          // Batch tokens for ~20fps: faster models stop re-parsing the whole answer every frame.
           pending += e.text;
-          if (!raf) raf = requestAnimationFrame(flush);
+          if (!timer) timer = setTimeout(flush, 50);
         } else if (e.type === "meta") update((t) => ({ ...t, model: e.model }));
         else if (e.type === "reset") {
           // A line written before a web search ("Let me look that up") gives way to the answer.
@@ -125,7 +125,7 @@ async function stream(ix: DocIndex, glossId: string, modelKey: ModelKey) {
         }
       }
     }
-    if (raf) cancelAnimationFrame(raf);
+    if (timer) clearTimeout(timer);
     flush();
   } catch (err) {
     if (ctrl.signal.aborted) update((t) => ({ ...t, streaming: false, error: t.content ? undefined : "Stopped." }));

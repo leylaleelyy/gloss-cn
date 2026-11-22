@@ -116,7 +116,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   }
 }
 /** Pulls overlap a little, so a write that landed while the last pull ran is not missed. Applying a row twice is harmless. */
-const OVERLAP_MS = 30_000;
+const OVERLAP_MS = 5_000;
 
 /** JSON with sorted keys, so the same object always compares equal, whatever order SQLite hands keys back in. */
 function stable(v: unknown): string {

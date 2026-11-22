@@ -147,7 +147,7 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
         else { visible.delete(id); positions.delete(id); }
       }
       clearTimeout(timer); timer = setTimeout(pump, 120);
-    }, { rootMargin: '1600px' });
+    }, { rootMargin: '800px' });
     root.querySelectorAll<HTMLElement>('[data-block]').forEach(el => { if (['p', 'li', 'quote', 'note'].includes(blocks.get(el.dataset.block!)?.type || '')) observer.observe(el); });
     return () => { stopped = true; window.removeEventListener('scroll', onScroll); clearTimeout(timer); controller.abort(); release(); observer.disconnect(); clearWiseHints(); useWise.setState({ loading: false }); };
   }, [ix, root, on, ready, prefs.level, entries, revision]);
