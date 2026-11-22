@@ -57,6 +57,17 @@ function packDoc(doc: Article): unknown {
   return { __gz: btoa(binary) };
 }
 
+/** Text-only fallback for an EPUB whose embedded pictures alone exceed a D1 row. */
+function withoutEmbeddedImages(doc: Article): Article {
+  return {
+    ...doc,
+    ...(doc.image?.startsWith("data:") ? { image: undefined } : {}),
+    blocks: doc.blocks.map((block) => (block.src?.startsWith("data:") ? { ...block, src: undefined } : block)),
+  };
+}
+
+const MAX_DOC_ROW = 1_800_000;
+
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -175,7 +186,9 @@ export function startSync(userId: string) {
           const doc = await loadDoc(id);
           if (doc && (row || !seenEntry?.[2])) {
             row ??= { id, articleId: e.articleId, data: e.data };
-            row.doc = packDoc(doc);
+            let packed = packDoc(doc);
+            if (JSON.stringify(packed).length > MAX_DOC_ROW) packed = packDoc(withoutEmbeddedImages(doc));
+            row.doc = packed;
           }
         }
         if (!row) continue;
