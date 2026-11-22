@@ -22,8 +22,10 @@
 import { forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
 import type { Article } from "./article";
 import { forgetCover } from "./covers";
+import { setSyncStatus } from "./sync-status";
+import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
 
-const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress"] as const;
+const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning"] as const;
 type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
@@ -68,6 +70,9 @@ function snapshot(): Snapshot {
     else busy.add(`briefs:${aid}`);
   }
   for (const [aid, p] of Object.entries(st.progress)) put("progress", aid, aid, p);
+  const learning = useLearning.getState();
+  for (const entry of learning.entries) put("vocabulary", entry.id, "vocabulary", entry);
+  if (learning.ready) put("learning", "preferences", "learning", learning.preferences);
   return { entities, busy };
 }
 
@@ -174,6 +179,7 @@ export function startSync(userId: string) {
       if (r.deleted) void forgetCover(r.id);
     }
     useStore.getState().applyRemote(changes);
+    await applyRemoteLearning(changes.vocabulary ?? [], changes.learning ?? []);
 
     // Record what was pulled as what the server has, read back through the same snapshot as a push.
     const { entities } = snapshot();
@@ -189,16 +195,31 @@ export function startSync(userId: string) {
   }
 
   const sync = () => serial(async () => {
-    await pull();
-    await push();
+    setSyncStatus("syncing");
+    try {
+      // Vocabulary lives in its own IndexedDB store; a push must not run before it is read.
+      await hydrateLearning();
+      await pull();
+      await push();
+      setSyncStatus("synced");
+    } catch (e) {
+      setSyncStatus("error");
+      throw e;
+    }
   });
 
   let timer: ReturnType<typeof setTimeout> | null = null;
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => serial(push), 2000);
+  };
   const unsubscribe = useStore.subscribe((st, prev) => {
     if (!st.hydrated) return;
     if (st.library === prev.library && st.highlights === prev.highlights && st.glosses === prev.glosses && st.briefs === prev.briefs && st.progress === prev.progress) return;
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => serial(push), 2000);
+    schedule();
+  });
+  const unsubscribeLearning = useLearning.subscribe((st, prev) => {
+    if (st.ready && (st.entries !== prev.entries || st.preferences !== prev.preferences)) schedule();
   });
 
   let lastPull = 0;
@@ -221,7 +242,9 @@ export function startSync(userId: string) {
   return {
     stop() {
       stopped = true;
+      setSyncStatus("off");
       unsubscribe();
+      unsubscribeLearning();
       if (timer) clearTimeout(timer);
       clearInterval(ticker);
       poke = null;

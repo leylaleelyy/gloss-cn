@@ -97,3 +97,28 @@ create table if not exists agent_tokens (
 );
 
 create index if not exists agent_tokens_user on agent_tokens (user_id);
+
+-- The vocabulary notebook: saved words with their contexts and mastery, and the
+-- reader's learning preferences. Same shape as the other mirrored tables.
+create table if not exists vocabulary (
+  user_id text not null,
+  id text not null,
+  article_id text not null,
+  data jsonb not null,
+  deleted boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create table if not exists learning (
+  user_id text not null,
+  id text not null,
+  article_id text not null,
+  data jsonb not null,
+  deleted boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create index if not exists vocabulary_user_updated on vocabulary (user_id, updated_at);
+create index if not exists learning_user_updated on learning (user_id, updated_at);

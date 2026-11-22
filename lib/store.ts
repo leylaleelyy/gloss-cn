@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Analysis, Definition } from "./learning";
+import type { Analysis, Definition, LearningPreferences, VocabularyEntry } from "./learning";
 import type { Action } from "./actions";
 import type { Article, BriefData } from "./article";
 import { modelOf, type ModelKey, type Source, type Usage } from "./models";
@@ -105,6 +105,8 @@ export type RemoteChanges = {
   glosses?: RemoteRow<Gloss>[];
   briefs?: RemoteRow<BriefState>[];
   progress?: RemoteRow<Progress>[];
+  vocabulary?: RemoteRow<VocabularyEntry>[];
+  learning?: RemoteRow<LearningPreferences>[];
 };
 
 type Persisted = {

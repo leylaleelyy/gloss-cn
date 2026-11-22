@@ -64,3 +64,31 @@ export function updateWord(id: string, status: VocabularyEntry["status"]) {
 export function removeWord(id: string) {
   return serialized(async () => { await write(id); useLearning.setState(s => ({ entries: s.entries.filter(x => x.id !== id) })); });
 }
+
+type RemoteWord = { id: string; data: VocabularyEntry | null; deleted: boolean };
+type RemoteLearning = { id: string; data: LearningPreferences | null; deleted: boolean };
+
+/**
+ * Account sync: words saved on another device, and the preferences that went
+ * with them. A local edit newer than the server's copy stays and is pushed back.
+ */
+export async function applyRemoteLearning(words: RemoteWord[] = [], settings: RemoteLearning[] = []) {
+  await hydrateLearning();
+  if (words.length) {
+    const next = new Map(useLearning.getState().entries.map((entry) => [entry.id, entry]));
+    for (const row of words) {
+      if (row.deleted || !row.data) {
+        next.delete(row.id);
+        try { await write(row.id); } catch {}
+        continue;
+      }
+      const local = next.get(row.id);
+      if (local && local.updatedAt > row.data.updatedAt) continue;
+      next.set(row.id, row.data);
+      try { await write(row.data); } catch {}
+    }
+    useLearning.setState({ entries: [...next.values()].sort((a, b) => b.updatedAt - a.updatedAt) });
+  }
+  const prefs = settings.find((row) => row.id === "preferences");
+  if (prefs && !prefs.deleted && prefs.data) setLearning(prefs.data);
+}

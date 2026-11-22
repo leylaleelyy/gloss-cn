@@ -57,6 +57,29 @@ Analyze now creates a saved violet margin card using the same card layout as Exp
 
 Desktop scrollbars follow the current paper/ink theme with rounded thumbs and stable gutters. Vocabulary navigation uses an English label and book icon, including an active-page state on the notebook.
 
+## Google sign-in and multi-device sync
+
+Accounts are optional. When Clerk and Neon are configured, a reader can sign in
+with Google and their library, questions, notes, highlights, reading progress
+and vocabulary follow them to every device.
+
+1. Create a Clerk application, enable **Google** under Social connections, and
+   add the site origin (for local work, `http://localhost:3100`) and
+   `/sso-callback` to the allowed redirect URLs.
+2. Create a Neon Postgres database, put its URL in `.env.local`, and run
+   `npm run db:migrate`. The schema includes the `vocabulary` and `learning`
+   tables used for vocabulary sync.
+3. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` and
+   `DATABASE_URL` locally and as Cloudflare secrets:
+   `npx wrangler secret put NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (build-time),
+   `npx wrangler secret put CLERK_SECRET_KEY`, and
+   `npx wrangler secret put DATABASE_URL`.
+4. Rebuild and deploy. Signed-out readers stay local; signing in merges the
+   local shelf into the account and syncs in both directions.
+
+Without Clerk keys the sign-in control stays hidden; without `DATABASE_URL`
+the sync routes cannot store anything.
+
 ## Cloudflare Workers
 
 This repository supports a separate Web build using OpenNext; the Omarchy

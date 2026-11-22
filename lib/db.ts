@@ -17,7 +17,7 @@ export function db() {
 }
 
 /** The tables the sync route reads and writes. Names are only ever taken from this list. */
-export const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress"] as const;
+export const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning"] as const;
 export type Collection = (typeof COLLECTIONS)[number];
 export const isCollection = (v: unknown): v is Collection => typeof v === "string" && (COLLECTIONS as readonly string[]).includes(v);
 
