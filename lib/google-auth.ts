@@ -14,12 +14,16 @@ type State = {
 const KEY = "gloss:google-token";
 const SEEN = "gloss:google-seen";
 
-function decode(token: string): GoogleUser | null {
+/** Decode a Google JWT's payload. The bytes are UTF-8, so names in any script survive. */
+export function decodeGoogleCredential(token: string): GoogleUser | null {
   try {
     const part = token.split(".")[1];
     if (!part) return null;
     const base64 = part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "=");
-    const payload = JSON.parse(atob(base64)) as {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
       sub?: string; email?: string; name?: string; picture?: string; exp?: number; aud?: string; email_verified?: boolean;
     };
     if (!payload.sub || !payload.email || !payload.exp || payload.exp * 1000 <= Date.now()) return null;
@@ -33,7 +37,7 @@ const initial = (): { credential: string | null; user: GoogleUser | null } => {
   try {
     const token = localStorage.getItem(KEY);
     if (!token) return { credential: null, user: null };
-    const user = decode(token);
+    const user = decodeGoogleCredential(token);
     if (user) return { credential: token, user };
     localStorage.removeItem(KEY);
   } catch {}
@@ -54,7 +58,7 @@ export function setGoogleConfigured(configured: boolean) {
 }
 
 export function setGoogleCredential(credential: string) {
-  const user = decode(credential);
+  const user = decodeGoogleCredential(credential);
   if (!user) return;
   try { localStorage.setItem(KEY, credential); localStorage.setItem(SEEN, "1"); } catch {}
   useGoogleAuth.setState({ loaded: true, credential, user });
@@ -78,7 +82,7 @@ export function promptGoogleRefresh() {
 export function googleAuthHeaders(): Record<string, string> {
   const token = useGoogleAuth.getState().credential;
   if (!token) return {};
-  if (!decode(token)) {
+  if (!decodeGoogleCredential(token)) {
     signOutGoogle();
     return {};
   }

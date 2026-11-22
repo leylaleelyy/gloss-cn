@@ -22,4 +22,8 @@ assert.deepEqual(ok && { userId: ok.userId, email: ok.email, name: ok.name }, { 
 assert.equal(await verifyGoogleIdToken(await token({ ...base, aud:'someone-else' })), null, 'wrong audience rejected');
 assert.equal(await verifyGoogleIdToken(await token({ ...base, exp: Math.floor(Date.now()/1000)-10 })), null, 'expired rejected');
 assert.equal(await verifyGoogleIdToken(await token(base, 'other-key')), null, 'unknown key rejected');
+const { decodeGoogleCredential } = await import('../lib/google-auth.ts');
+const chinese = await token({ ...base, name: '张伟' });
+assert.equal(decodeGoogleCredential(chinese)?.name, '张伟', 'UTF-8 Google names decode correctly');
 console.log('PASS: Google ID token signature, audience, expiry and key checks');
+console.log('PASS: Google names in Chinese decode without mojibake');
