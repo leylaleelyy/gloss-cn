@@ -160,6 +160,7 @@ function snapshot(): Snapshot {
 let watchers = 0;
 let poke: (() => void) | null = null;
 const WATCH_MS = 8000;
+const MAX_WATCH_MS = 20_000;
 
 /** Pull now and every few seconds while the returned stop hasn't been called. */
 export function watchShelf(): () => void {
@@ -329,6 +330,7 @@ export function startSync(userId: string) {
       // Removed on another device: its painted cover goes from this one too.
       if (r.deleted) void forgetCover(r.id);
     }
+    const changedRows = COLLECTIONS.reduce((n, c) => n + (changes[c]?.length ?? 0), 0);
     useStore.getState().applyRemote(changes);
     await applyRemoteLearning(changes.vocabulary ?? [], changes.learning ?? []);
     applyRemoteSettings(changes.settings ?? []);
@@ -344,6 +346,8 @@ export function startSync(userId: string) {
     }
     base.since = now;
     save();
+    quietPolls = changedRows ? 0 : Math.min(6, quietPolls + 1);
+    interval = Math.min(MAX_WATCH_MS, WATCH_MS + quietPolls * 2000);
     setSyncStatus("synced");
     } catch (error) {
       setSyncStatus("error", error instanceof Error ? error.message : "Sync failed");
@@ -388,6 +392,8 @@ export function startSync(userId: string) {
   window.addEventListener("gloss:sync-now", retry);
 
   let lastPull = 0;
+  let quietPolls = 0;
+  let interval = WATCH_MS;
   const pullIfStale = (ms: number) => {
     if (document.visibilityState === "hidden" || Date.now() - lastPull < ms) return;
     lastPull = Date.now();
@@ -395,10 +401,10 @@ export function startSync(userId: string) {
   };
   const onVisible = () => {
     if (document.visibilityState === "hidden") serial(push);
-    else pullIfStale(watchers ? WATCH_MS : 20_000);
+    else pullIfStale(watchers ? interval : 20_000);
   };
   document.addEventListener("visibilitychange", onVisible);
-  const ticker = setInterval(() => watchers && pullIfStale(WATCH_MS - 1000), WATCH_MS);
+  const ticker = setInterval(() => watchers && pullIfStale(interval), 2000);
   poke = () => pullIfStale(3000);
 
   lastPull = Date.now();
