@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import vm from "node:vm";
-import { DEFAULT_SETTINGS, saveBookSettings, bookSettings, applySettings, BOOT_SCRIPT } from "../lib/settings.ts";
+import { DEFAULT_SETTINGS, saveBookSettings, bookSettings, applySettings, BOOT_SCRIPT, syncedSettings, cleanSyncedSettings } from "../lib/settings.ts";
 const data = new Map();
 globalThis.localStorage = { getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,v) };
 globalThis.window = { location: { pathname: "/read/a" }, dispatchEvent() {}, matchMedia: () => ({matches:false}) };
@@ -32,4 +32,14 @@ for (const [id,face,size] of [["a","huiwen",26],["b","dyslexie",17],["c","serif"
 saveBookSettings("a",{size:999,face:"invalid"});
 assert.equal(bookSettings("a").size,26);
 assert.equal(bookSettings("a").face,"huiwen");
+const synced = syncedSettings({ ...DEFAULT_SETTINGS, size: 26, face: "huiwen", theme: "sepia", responseLanguage: "en", uiLanguage: "zh" });
+assert.equal(synced.theme, "sepia");
+assert.equal(synced.responseLanguage, "en");
+assert.equal(synced.uiLanguage, "zh");
+assert.equal("size" in synced, false, "device type size stays local");
+assert.equal("face" in synced, false, "device face stays local");
+const cleaned = cleanSyncedSettings({ theme: "nope", pen: "moss", length: "long", uiLanguage: "fr", search: "yes", numbers: true });
+assert.deepEqual(cleaned, { pen: "moss", length: "long", numbers: true });
+assert.deepEqual(cleanSyncedSettings(null), {});
 console.log("PASS: independent books, all layout fields, legacy font migration, invalid values and first-paint restoration.");
+console.log("PASS: only safe account settings are synced; device typography and bad values are rejected.");

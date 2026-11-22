@@ -61,7 +61,11 @@ Desktop scrollbars follow the current paper/ink theme with rounded thumbs and st
 
 Accounts are optional. Signed-in readers keep their library, questions, notes,
 highlights, reading progress, vocabulary and learning preferences across
-devices. The browser stays local-first; a small sync route mirrors changes.
+devices. Account-wide choices (theme, pen, highlighter, answer and interface
+language, answer length, web search, numbering, rail and listen) also follow
+the account. Device typography (size, face, measure, spacing), per-book layout
+and AI provider API keys stay on each device. The browser stays local-first; a
+small sync route mirrors changes.
 
 1. In Google Cloud Console create an **OAuth Client ID** for a Web application,
    and add the site origin to **Authorized JavaScript origins**:

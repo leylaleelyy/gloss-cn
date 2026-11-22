@@ -104,3 +104,16 @@ create table if not exists agent_tokens (
   revoked integer not null default 0
 );
 create index if not exists agent_tokens_user on agent_tokens (user_id);
+
+-- Account-wide preferences that are safe to carry between devices. Device-only
+-- typography and API keys are never stored here.
+create table if not exists settings (
+  user_id text not null,
+  id text not null,
+  article_id text not null,
+  data text not null,
+  deleted integer not null default 0,
+  updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  primary key (user_id, id)
+);
+create index if not exists settings_user_updated on settings (user_id, updated_at);

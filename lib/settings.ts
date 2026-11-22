@@ -158,6 +158,49 @@ export function applySettings(s: Settings) {
 }
 
 /**
+ * Non-secret choices that follow the account. Appearance that depends on the
+ * device (size, face, measure, spacing) intentionally stays local.
+ */
+export const SYNCED_SETTING_KEYS = [
+  "theme",
+  "pen",
+  "marker",
+  "responseLanguage",
+  "length",
+  "uiLanguage",
+  "search",
+  "numbers",
+  "rail",
+  "listen",
+] as const;
+
+export type SyncedSettings = Pick<Settings, typeof SYNCED_SETTING_KEYS[number]>;
+
+const LENGTHS = ["short", "normal", "long"];
+const RESPONSE_LANGUAGES = ["zh-CN", "zh-TW", "en", "ja", "ko", "auto"];
+
+/** The synced subset of a full settings object. */
+export function syncedSettings(s: Settings): SyncedSettings {
+  return Object.fromEntries(SYNCED_SETTING_KEYS.map((key) => [key, s[key]])) as SyncedSettings;
+}
+
+/** A remote settings row, cleaned so a bad value can never reach <html> or the reader. */
+export function cleanSyncedSettings(value: unknown): Partial<SyncedSettings> {
+  const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const out: Partial<SyncedSettings> = {};
+  if (THEMES.some((theme) => theme.key === raw.theme)) out.theme = raw.theme as Settings["theme"];
+  if (PENS.some((pen) => pen.key === raw.pen)) out.pen = raw.pen as Settings["pen"];
+  if (MARKERS.some((marker) => marker.key === raw.marker)) out.marker = raw.marker as Marker;
+  if (RESPONSE_LANGUAGES.includes(raw.responseLanguage as string)) out.responseLanguage = raw.responseLanguage as ResponseLanguage;
+  if (LENGTHS.includes(raw.length as string)) out.length = raw.length as Settings["length"];
+  if (raw.uiLanguage === "en" || raw.uiLanguage === "zh") out.uiLanguage = raw.uiLanguage;
+  for (const key of ["search", "numbers", "rail", "listen"] as const) {
+    if (typeof raw[key] === "boolean") out[key] = raw[key] as boolean;
+  }
+  return out;
+}
+
+/**
  * The same thing as applySettings, as an inline script for <head>, so the
  * first paint already has the reader's theme, pen and type. Kept in sync by hand.
  */

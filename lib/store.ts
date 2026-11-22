@@ -107,6 +107,7 @@ export type RemoteChanges = {
   progress?: RemoteRow<Progress>[];
   vocabulary?: RemoteRow<VocabularyEntry>[];
   learning?: RemoteRow<LearningPreferences>[];
+  settings?: RemoteRow<Partial<Settings>>[];
 };
 
 type Persisted = {

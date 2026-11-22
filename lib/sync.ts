@@ -25,8 +25,10 @@ import { forgetCover } from "./covers";
 import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
 import { googleAuthHeaders, signOutGoogle } from "./google-auth";
+import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
+import { SYNCED_SETTING_KEYS } from "./settings";
 
-const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning"] as const;
+const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning", "settings"] as const;
 type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
@@ -90,6 +92,7 @@ function snapshot(): Snapshot {
   const learning = useLearning.getState();
   for (const entry of learning.entries) put("vocabulary", entry.id, "vocabulary", entry);
   if (learning.ready) put("learning", "preferences", "learning", learning.preferences);
+  if (st.hydrated) put("settings", "preferences", "settings", localSyncedSettings());
   return { entities, busy };
 }
 
@@ -211,6 +214,7 @@ export function startSync(userId: string) {
     }
     useStore.getState().applyRemote(changes);
     await applyRemoteLearning(changes.vocabulary ?? [], changes.learning ?? []);
+    applyRemoteSettings(changes.settings ?? []);
 
     // Record what was pulled as what the server has, read back through the same snapshot as a push.
     const { entities } = snapshot();
@@ -251,7 +255,8 @@ export function startSync(userId: string) {
   };
   const unsubscribe = useStore.subscribe((st, prev) => {
     if (!st.hydrated) return;
-    if (st.library === prev.library && st.highlights === prev.highlights && st.glosses === prev.glosses && st.briefs === prev.briefs && st.progress === prev.progress) return;
+    const settingsChanged = SYNCED_SETTING_KEYS.some((key) => st.settings[key] !== prev.settings[key]);
+    if (!settingsChanged && st.library === prev.library && st.highlights === prev.highlights && st.glosses === prev.glosses && st.briefs === prev.briefs && st.progress === prev.progress) return;
     schedule();
   });
   const unsubscribeLearning = useLearning.subscribe((st, prev) => {
