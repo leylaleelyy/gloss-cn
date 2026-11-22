@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { accountsEnabled } from "@/lib/accounts";
-import { initGoogleAuth, setGoogleConfigured, setGoogleCredential, useGoogleAuth } from "@/lib/google-auth";
+import { googleSeen, initGoogleAuth, promptGoogleRefresh, setGoogleConfigured, setGoogleCredential, useGoogleAuth } from "@/lib/google-auth";
 import { useI18n } from "@/lib/ui-lang";
 
 /** Loads Google Identity Services and owns the one sign-in dialog. */
@@ -48,7 +48,7 @@ export function GoogleProvider({ children }: { children: ReactNode }) {
           if (response.credential) setGoogleCredential(response.credential);
           setOpen(false);
         },
-        auto_select: false,
+        auto_select: true,
         cancel_on_tap_outside: true,
         ux_mode: "popup",
       });
@@ -73,6 +73,13 @@ export function GoogleProvider({ children }: { children: ReactNode }) {
       script.removeEventListener("error", fail);
     };
   }, [clientId]);
+
+  // A returning reader can be signed back in silently (or with One Tap) when Google's session is alive.
+  useEffect(() => {
+    if (!ready || !clientId || user || !googleSeen()) return;
+    const timer = setTimeout(promptGoogleRefresh, 700);
+    return () => clearTimeout(timer);
+  }, [ready, clientId, user]);
 
   // Draw Google's own button only while the dialog is visible.
   useLayoutEffect(() => {

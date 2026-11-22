@@ -12,6 +12,7 @@ type State = {
 };
 
 const KEY = "gloss:google-token";
+const SEEN = "gloss:google-seen";
 
 function decode(token: string): GoogleUser | null {
   try {
@@ -55,14 +56,23 @@ export function setGoogleConfigured(configured: boolean) {
 export function setGoogleCredential(credential: string) {
   const user = decode(credential);
   if (!user) return;
-  try { localStorage.setItem(KEY, credential); } catch {}
+  try { localStorage.setItem(KEY, credential); localStorage.setItem(SEEN, "1"); } catch {}
   useGoogleAuth.setState({ loaded: true, credential, user });
 }
 
 export function signOutGoogle() {
-  try { localStorage.removeItem(KEY); } catch {}
+  try { localStorage.removeItem(KEY); localStorage.removeItem(SEEN); } catch {}
   useGoogleAuth.setState({ credential: null, user: null, loaded: true });
   try { window.google?.accounts.id.disableAutoSelect(); } catch {}
+}
+
+/** A Google authorization happened on this device before, so One Tap may refresh it silently. */
+export function googleSeen(): boolean {
+  try { return localStorage.getItem(SEEN) === "1"; } catch { return false; }
+}
+
+export function promptGoogleRefresh() {
+  try { window.google?.accounts.id.prompt(); } catch {}
 }
 
 export function googleAuthHeaders(): Record<string, string> {
