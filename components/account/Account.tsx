@@ -4,7 +4,7 @@ import { LogOut } from "lucide-react";
 import { Popover, barBtn } from "@/components/ui/Popover";
 import { accountsEnabled } from "@/lib/accounts";
 import { openGoogleSignIn, signOutGoogle, useGoogleAuth } from "@/lib/google-auth";
-import { useSyncStatus } from "@/lib/sync-status";
+import { requestSync, useSyncStatus } from "@/lib/sync-status";
 import { useI18n } from "@/lib/ui-lang";
 
 /** Signed out: a quiet sign-in menu led by Google. Signed in: the avatar, the account, and a sync dot. */
@@ -12,6 +12,7 @@ export function Account() {
   const { t } = useI18n();
   const { loaded, configured, user } = useGoogleAuth();
   const sync = useSyncStatus((s) => s.state);
+  const syncError = useSyncStatus((s) => s.error);
   if (!accountsEnabled || !loaded || configured !== true) return null;
 
   if (!user) {
@@ -27,7 +28,7 @@ export function Account() {
     );
   }
 
-  const state = sync === "synced" ? t("auth.syncOn") : sync === "syncing" ? t("auth.syncing") : t("auth.syncOff");
+  const state = sync === "synced" ? t("auth.syncOn") : sync === "syncing" ? t("auth.syncing") : sync === "error" ? t("auth.syncFailed") : t("auth.syncOff");
   return (
     <Popover
       label={t("auth.account")}
@@ -67,9 +68,15 @@ export function Account() {
             </div>
           </div>
           <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ink-3">
-            <span className={`size-1.5 rounded-full ${sync === "synced" ? "bg-[var(--good)]" : sync === "syncing" ? "animate-pulse bg-[var(--rubric)]" : "bg-ink-4"}`} aria-hidden />
+            <span className={`size-1.5 rounded-full ${sync === "synced" ? "bg-[var(--good)]" : sync === "syncing" ? "animate-pulse bg-[var(--rubric)]" : sync === "error" ? "bg-[var(--rubric)]" : "bg-ink-4"}`} aria-hidden />
             {state}
           </p>
+          {sync === "error" && syncError && <p className="mt-1 break-words text-[11.5px] leading-snug text-rubric-text">{syncError}</p>}
+          {sync === "error" && (
+            <button type="button" onClick={requestSync} className="mt-2 min-h-8 rounded-full px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-sunk hover:text-ink">
+              {t("auth.retry")}
+            </button>
+          )}
           <button
             type="button"
             onClick={signOutGoogle}

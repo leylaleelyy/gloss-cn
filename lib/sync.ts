@@ -37,6 +37,22 @@ type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean;
 /** Pushes are split to stay well under the 4.5MB request cap. */
 const BATCH_BYTES = 1_500_000;
 const MAX_BODY = 4_300_000;
+/** A stalled request must not leave the badge on "Syncing" forever. */
+const PULL_TIMEOUT = 30_000;
+const PUSH_TIMEOUT = 120_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Request timed out");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 /** Pulls overlap a little, so a write that landed while the last pull ran is not missed. Applying a row twice is harmless. */
 const OVERLAP_MS = 30_000;
 
@@ -112,6 +128,8 @@ export function startSync(userId: string) {
   const serial = (fn: () => Promise<void>) => (chain = chain.then(() => (stopped ? undefined : fn())).catch(() => {}));
 
   async function push() {
+    setSyncStatus("syncing");
+    try {
     const { entities, busy } = snapshot();
     const rows: { c: Collection; row: OutRow; key: string | null; size: number }[] = [];
     for (const c of COLLECTIONS) {
@@ -132,7 +150,10 @@ export function startSync(userId: string) {
         rows.push({ c, row: { id, articleId, data: {}, deleted: true }, key: null, size: id.length + articleId.length + 64 });
       }
     }
-    if (!rows.length) return;
+    if (!rows.length) {
+      setSyncStatus("synced");
+      return;
+    }
 
     // Too big for one request even alone: send the shelf entry without the text.
     for (const r of rows) {
@@ -148,7 +169,7 @@ export function startSync(userId: string) {
       if (!batch.length) return;
       const changes: Partial<Record<Collection, OutRow[]>> = {};
       for (const r of batch) (changes[r.c] ??= []).push(r.row);
-      const res = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ changes }) });
+      const res = await fetchWithTimeout("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ changes }) }, PUSH_TIMEOUT);
       if (res.status === 401) signOutGoogle();
       if (!res.ok) throw new Error(`push ${res.status}`);
       for (const r of batch) {
@@ -165,11 +186,18 @@ export function startSync(userId: string) {
       bytes += r.size;
     }
     await flush();
+    setSyncStatus("synced");
+    } catch (error) {
+      setSyncStatus("error", error instanceof Error ? error.message : "Sync failed");
+      throw error;
+    }
   }
 
   async function pull() {
+    setSyncStatus("syncing");
+    try {
     const q = base.since ? `?since=${encodeURIComponent(new Date(Date.parse(base.since) - OVERLAP_MS).toISOString())}` : "";
-    const res = await fetch(`/api/sync${q}`, { headers: googleAuthHeaders() });
+    const res = await fetchWithTimeout(`/api/sync${q}`, { headers: googleAuthHeaders() }, PULL_TIMEOUT);
     if (res.status === 401) signOutGoogle();
     if (!res.ok) throw new Error(`pull ${res.status}`);
     const { now, changes } = (await res.json()) as { now: string; changes: RemoteChanges };
@@ -195,6 +223,11 @@ export function startSync(userId: string) {
     }
     base.since = now;
     save();
+    setSyncStatus("synced");
+    } catch (error) {
+      setSyncStatus("error", error instanceof Error ? error.message : "Sync failed");
+      throw error;
+    }
   }
 
   const sync = () => serial(async () => {
@@ -206,7 +239,7 @@ export function startSync(userId: string) {
       await push();
       setSyncStatus("synced");
     } catch (e) {
-      setSyncStatus("error");
+      setSyncStatus("error", e instanceof Error ? e.message : "Sync failed");
       throw e;
     }
   });
@@ -224,6 +257,9 @@ export function startSync(userId: string) {
   const unsubscribeLearning = useLearning.subscribe((st, prev) => {
     if (st.ready && (st.entries !== prev.entries || st.preferences !== prev.preferences)) schedule();
   });
+
+  const retry = () => sync();
+  window.addEventListener("gloss:sync-now", retry);
 
   let lastPull = 0;
   const pullIfStale = (ms: number) => {
@@ -252,6 +288,7 @@ export function startSync(userId: string) {
       clearInterval(ticker);
       poke = null;
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("gloss:sync-now", retry);
     },
   };
 }
@@ -259,7 +296,7 @@ export function startSync(userId: string) {
 /** Fetch one text from the account and keep it on this device. Null when signed out or not there. */
 export async function fetchText(id: string): Promise<Article | null> {
   try {
-    const res = await fetch(`/api/articles/${encodeURIComponent(id)}`, { headers: googleAuthHeaders() });
+    const res = await fetchWithTimeout(`/api/articles/${encodeURIComponent(id)}`, { headers: googleAuthHeaders() }, PULL_TIMEOUT);
     if (!res.ok) return null;
     const { doc } = (await res.json()) as { doc: Article };
     await saveDoc(doc);
