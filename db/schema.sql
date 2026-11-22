@@ -117,3 +117,16 @@ create table if not exists settings (
   primary key (user_id, id)
 );
 create index if not exists settings_user_updated on settings (user_id, updated_at);
+
+-- Large book texts are stored as gzip chunks, so an image-heavy EPUB can sync
+-- without exceeding one request or one D1 row. articles.doc carries a small
+-- {"__chunked":true} marker.
+create table if not exists article_docs (
+  user_id text not null,
+  article_id text not null,
+  seq integer not null,
+  data text not null,
+  updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  primary key (user_id, article_id, seq)
+);
+create index if not exists article_docs_user on article_docs (user_id, article_id);

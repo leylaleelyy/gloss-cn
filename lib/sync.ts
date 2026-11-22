@@ -36,9 +36,9 @@ type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-const BASELINE_VERSION = 4;
+const BASELINE_VERSION = 5;
 type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1, docAt?: number]>> };
-type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown };
+type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown; images?: boolean };
 
 /** Pushes are split to stay well under the 4.5MB request cap. */
 const BATCH_BYTES = 1_500_000;
@@ -57,20 +57,50 @@ function packDoc(doc: Article): unknown {
   return { __gz: btoa(binary) };
 }
 
-/** Text-only fallback for an EPUB whose embedded pictures alone exceed a D1 row. */
+/** True when the local text still carries pictures that an older sync may have stripped. */
 function hasEmbeddedImages(doc: Article): boolean {
   return Boolean(doc.image?.startsWith("data:") || doc.blocks.some((block) => block.src?.startsWith("data:")));
 }
 
-function withoutEmbeddedImages(doc: Article): Article {
-  return {
-    ...doc,
-    ...(doc.image?.startsWith("data:") ? { image: undefined } : {}),
-    blocks: doc.blocks.map((block) => (block.src?.startsWith("data:") ? { ...block, src: undefined } : block)),
-  };
+const MAX_INLINE_DOC = 4_000_000;
+const DOC_CHUNK = 700_000;
+const REPACK_KEY = "gloss:docs-v5-images";
+
+function repackedImages(): Set<string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(REPACK_KEY) || "[]");
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
 }
 
-const MAX_DOC_ROW = 8_000_000;
+function markImagesRepacked(ids: Iterable<string>) {
+  const set = repackedImages();
+  let changed = false;
+  for (const id of ids) changed = !set.has(id) ? (set.add(id), true) : changed;
+  if (!changed) return;
+  try { localStorage.setItem(REPACK_KEY, JSON.stringify([...set])); } catch {}
+}
+
+/** A large text uploads as gzip chunks and leaves a tiny marker in the article row. */
+async function uploadDoc(articleId: string, packed: unknown): Promise<unknown> {
+  if (!packed || typeof packed !== "object" || typeof (packed as { __gz?: unknown }).__gz !== "string") return packed;
+  const gz = (packed as { __gz: string }).__gz;
+  if (gz.length <= MAX_INLINE_DOC) return packed;
+  const total = Math.ceil(gz.length / DOC_CHUNK);
+  for (let seq = 0; seq < total; seq++) {
+    const data = gz.slice(seq * DOC_CHUNK, (seq + 1) * DOC_CHUNK);
+    const res = await fetchWithTimeout(
+      `/api/articles/${encodeURIComponent(articleId)}/doc`,
+      { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ seq, total, data }) },
+      PUSH_TIMEOUT
+    );
+    if (res.status === 401) signOutGoogle();
+    if (!res.ok) throw new Error(`doc ${res.status}`);
+  }
+  return { __chunked: true };
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
@@ -145,6 +175,7 @@ export function startSync(userId: string) {
   const storeKey = `gloss:sync:${userId}`;
   let base: Baseline = emptyBaseline();
   let repackImages = false;
+  const alreadyRepacked = repackedImages();
   try {
     const raw = localStorage.getItem(storeKey);
     if (raw) {
@@ -190,13 +221,13 @@ export function startSync(userId: string) {
         // Samples ship with the app. A text already on the shelf still uploads a missing document.
         if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
           const doc = await loadDoc(id);
-          const needsRepack = Boolean(doc && repackImages && hasEmbeddedImages(doc) && !seenEntry?.[3]);
+          const images = Boolean(doc && hasEmbeddedImages(doc));
+          const needsRepack = Boolean(doc && repackImages && images && !alreadyRepacked.has(id));
           if (doc && (row || !seenEntry?.[2] || needsRepack)) {
             row ??= { id, articleId: e.articleId, data: e.data };
             row.data = { ...(e.data as Record<string, unknown>), docAt: Date.now() };
-            let packed = packDoc(doc);
-            if (JSON.stringify(packed).length > MAX_DOC_ROW) packed = packDoc(withoutEmbeddedImages(doc));
-            row.doc = packed;
+            row.doc = await uploadDoc(e.articleId, packDoc(doc));
+            row.images = images;
           }
         }
         if (!row) continue;
@@ -254,6 +285,7 @@ export function startSync(userId: string) {
         }
       }
       clearArticleDeletions(batch.filter((r) => r.c === "articles" && r.row.deleted).map((r) => r.row.id));
+      markImagesRepacked(batch.filter((r) => r.c === "articles" && r.row.images).map((r) => r.row.id));
       save();
       batch = [];
       bytes = 0;

@@ -54,13 +54,18 @@ const parse = (v: unknown) => {
 };
 
 /** A large text may arrive gzipped from the browser to fit the request and D1 limits. */
+function inflateDoc(base64: string): unknown {
+  try {
+    return JSON.parse(new TextDecoder().decode(gunzipSync(base64ToBytes(base64)))) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 function unpackDoc(value: string): unknown {
   const data = parse(value);
   if (data && typeof data === "object" && typeof (data as { __gz?: unknown }).__gz === "string") {
-    try {
-      const text = new TextDecoder().decode(gunzipSync(base64ToBytes((data as { __gz: string }).__gz)));
-      return JSON.parse(text) as unknown;
-    } catch {}
+    return inflateDoc((data as { __gz: string }).__gz) ?? data;
   }
   return data;
 }
@@ -123,9 +128,14 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
       }
     }
   }
-  // A text taken off the shelf takes its painted cover with it.
+  // A text taken off the shelf takes its painted cover and document chunks with it.
   for (const row of (changes.articles ?? []).filter((r) => r.deleted)) {
     statements.push(database.prepare("delete from covers where user_id = ? and id = ?").bind(userId, row.id));
+    statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
+  }
+  // Replacing a chunked text with an inline one leaves no stale chunks behind.
+  for (const row of (changes.articles ?? []).filter((r) => !r.deleted && r.doc != null && !(typeof r.doc === "object" && (r.doc as { __chunked?: boolean }).__chunked))) {
+    statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
   }
   // D1 batches are bounded; keep each one modest so a large import can still land.
   for (let i = 0; i < statements.length; i += 100) await database.batch(statements.slice(i, i + 100));
@@ -134,7 +144,14 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
 /** One article's full text. */
 export async function articleDoc(userId: string, id: string): Promise<unknown | null> {
   const row = await d1().prepare("select doc from articles where user_id = ? and id = ? and deleted = 0 and doc is not null").bind(userId, id).first<{ doc?: string }>();
-  return row?.doc ? unpackDoc(row.doc) : null;
+  if (!row?.doc) return null;
+  const marker = parse(row.doc) as { __chunked?: boolean };
+  if (marker.__chunked) {
+    const chunks = await d1().prepare("select data from article_docs where user_id = ? and article_id = ? order by seq").bind(userId, id).all<{ data: string }>();
+    const gz = (chunks.results ?? []).map((chunk) => chunk.data).join("");
+    return gz ? inflateDoc(gz) : null;
+  }
+  return unpackDoc(row.doc);
 }
 
 /* ---------- painted covers ---------- */
