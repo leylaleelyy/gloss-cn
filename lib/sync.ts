@@ -27,6 +27,7 @@ import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-st
 import { expireGoogleCredential, googleAuthHeaders } from "./google-auth";
 import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
 import { gzipSync } from "fflate";
+import { shrinkImageForVision } from "./vision-image";
 import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
 import { confirmSyncDeletions } from "./sync-guard";
 import { SYNCED_SETTING_KEYS } from "./settings";
@@ -36,7 +37,7 @@ type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-const BASELINE_VERSION = 5;
+const BASELINE_VERSION = 6;
 type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1, docAt?: number]>> };
 type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown; images?: boolean };
 
@@ -64,7 +65,45 @@ function hasEmbeddedImages(doc: Article): boolean {
 
 const MAX_INLINE_DOC = 4_000_000;
 const DOC_CHUNK = 700_000;
-const REPACK_KEY = "gloss:docs-v5-images";
+
+/** Upload one extracted book picture; a failed non-auth upload drops that picture, not the book. */
+async function uploadAsset(articleId: string, blockId: string, mime: string, data: string): Promise<boolean> {
+  const res = await fetchWithTimeout("/api/assets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...googleAuthHeaders() },
+    body: JSON.stringify({ articleId, id: blockId, mime, data }),
+  }, PUSH_TIMEOUT);
+  if (res.status === 401) expireGoogleCredential();
+  return res.ok;
+}
+
+/**
+ * Move embedded EPUB pictures out of the document and into individual assets.
+ * The document then stays small; readers on another device fetch each picture on demand.
+ */
+async function prepareDoc(articleId: string, doc: Article): Promise<Article> {
+  const jobs: { blockId: string; mime: string; data: string }[] = [];
+  const blocks = await Promise.all(doc.blocks.map(async (block) => {
+    if (!block.src?.startsWith("data:image/")) return block;
+    const shrunk = await shrinkImageForVision(block.src);
+    const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([a-z\d+/=]+)$/i.exec(shrunk);
+    if (!match) return block;
+    jobs.push({ blockId: block.id, mime: match[1], data: match[2] });
+    return { ...block, src: `gloss-asset:${articleId}:${block.id}` };
+  }));
+  const failed = new Set<string>();
+  for (let i = 0; i < jobs.length; i += 4) {
+    await Promise.all(jobs.slice(i, i + 4).map(async (job) => {
+      if (!(await uploadAsset(articleId, job.blockId, job.mime, job.data))) failed.add(job.blockId);
+    }));
+  }
+  return {
+    ...doc,
+    blocks: blocks.filter((block) => !failed.has(block.id)),
+    ...(doc.image?.startsWith("data:") ? { image: undefined } : {}),
+  };
+}
+const REPACK_KEY = "gloss:docs-v6-images";
 
 function repackedImages(): Set<string> {
   try {

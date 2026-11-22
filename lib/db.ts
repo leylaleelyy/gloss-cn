@@ -133,6 +133,7 @@ export async function pushRows(userId: string, changes: Partial<Record<Collectio
     statements.push(database.prepare("delete from covers where user_id = ? and id = ?").bind(userId, row.id));
     statements.push(database.prepare("delete from article_docs where user_id = ? and article_id = ?").bind(userId, row.id));
     statements.push(database.prepare("delete from doc_chunks where user_id = ? and article_id = ?").bind(userId, row.id));
+    statements.push(database.prepare("delete from assets where user_id = ? and article_id = ?").bind(userId, row.id));
   }
   // Replacing a text prunes superseded chunks once the new article pointer lands.
   for (const row of (changes.articles ?? []).filter((r) => !r.deleted && r.doc != null)) {
@@ -155,13 +156,35 @@ export async function articleDoc(userId: string, id: string): Promise<unknown | 
   if (!row?.doc) return null;
   const marker = parse(row.doc) as { __chunked?: boolean; uploadId?: string };
   if (marker.__chunked) {
-    const chunks = marker.uploadId
-      ? await d1().prepare("select data from doc_chunks where user_id = ? and article_id = ? and upload_id = ? order by seq").bind(userId, id, marker.uploadId).all<{ data: string }>()
-      : await d1().prepare("select data from article_docs where user_id = ? and article_id = ? order by seq").bind(userId, id).all<{ data: string }>();
+    const table = marker.uploadId ? "doc_chunks" : "article_docs";
+    const where = marker.uploadId ? "user_id = ? and article_id = ? and upload_id = ?" : "user_id = ? and article_id = ?";
+    const params = marker.uploadId ? [userId, id, marker.uploadId] : [userId, id];
+    const stats = await d1().prepare(`select coalesce(sum(length(data)), 0) as total from ${table} where ${where}`).bind(...params).first<{ total?: number }>();
+    // Decompressing tens of megabytes inside one Worker exceeds its CPU budget (Error 1102).
+    // The importing device re-uploads a picture-separated, much smaller text version.
+    if (Number(stats?.total ?? 0) > 8_000_000) return null;
+    const chunks = await d1().prepare(`select data from ${table} where ${where} order by seq`).bind(...params).all<{ data: string }>();
     const gz = (chunks.results ?? []).map((chunk) => chunk.data).join("");
     return gz ? inflateDoc(gz) : null;
   }
   return unpackDoc(row.doc);
+}
+
+/* ---------- book pictures ---------- */
+
+export async function saveAsset(userId: string, articleId: string, id: string, mime: string, data: Uint8Array): Promise<void> {
+  await d1()
+    .prepare(
+      `insert into assets (user_id, article_id, id, mime, data, updated_at) values (?, ?, ?, ?, ?, ${NOW})
+       on conflict (user_id, article_id, id) do update set mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at`
+    )
+    .bind(userId, articleId, id, mime, bytesToBase64(data))
+    .run();
+}
+
+export async function loadAsset(userId: string, articleId: string, id: string): Promise<{ mime: string; data: Uint8Array } | null> {
+  const row = await d1().prepare("select mime, data from assets where user_id = ? and article_id = ? and id = ?").bind(userId, articleId, id).first<{ mime?: string; data?: string }>();
+  return row?.data ? { mime: String(row.mime ?? "application/octet-stream"), data: base64ToBytes(row.data) } : null;
 }
 
 /* ---------- painted covers ---------- */

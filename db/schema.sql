@@ -143,3 +143,15 @@ create table if not exists doc_chunks (
   primary key (user_id, article_id, upload_id, seq)
 );
 create index if not exists doc_chunks_user on doc_chunks (user_id, article_id, upload_id);
+
+-- Pictures from an EPUB are uploaded as individual assets, so the book text
+-- stays small and an image-heavy book does not hit Worker CPU limits.
+create table if not exists assets (
+  user_id text not null,
+  article_id text not null,
+  id text not null,
+  mime text not null,
+  data text not null,
+  updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  primary key (user_id, article_id, id)
+);

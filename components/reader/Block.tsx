@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, memo, useState, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useState, type ReactNode } from "react";
 import { useWiseHints } from "./WordWise";
 import type { WiseHint } from "@/lib/word-wise";
 import { startGloss } from "@/lib/ask";
+import { googleAuthHeaders } from "@/lib/google-auth";
 import { useReader } from "./context";
 import { useI18n } from "@/lib/ui-lang";
 import { MessageCirclePlus, ScanEye } from "lucide-react";
@@ -143,11 +144,33 @@ function repairSrc(src: string): string {
 function Picture({ src, alt, blockId }: { src: string; alt?: string; blockId: string }) {
   const { ix } = useReader();
   const [state, setState] = useState<"loading" | "ok" | "gone">("loading");
+  const [asset, setAsset] = useState<string | null>(null);
+  const marker = src.startsWith("gloss-asset:") ? src.slice("gloss-asset:".length).split(":") : null;
+  useEffect(() => {
+    if (!marker) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    void fetch(`/api/assets/${encodeURIComponent(marker[0])}/${encodeURIComponent(marker.slice(1).join(":"))}`, { headers: googleAuthHeaders() })
+      .then((response) => response.ok ? response.blob() : null)
+      .then((blob) => {
+        if (cancelled || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        setAsset(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // The marker carries both ids; src changes only when the document changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
   if (state === "gone") return null;
+  if (marker && !asset) return null;
   return (
     <div>
     <img
-      src={repairSrc(src)}
+      src={marker ? asset! : repairSrc(src)}
       alt={alt ?? ""}
       loading="lazy"
       decoding="async"
