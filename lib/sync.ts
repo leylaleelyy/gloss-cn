@@ -116,7 +116,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   }
 }
 /** Pulls overlap a little, so a write that landed while the last pull ran is not missed. Applying a row twice is harmless. */
-const OVERLAP_MS = 5_000;
+const OVERLAP_MS = 2_000;
 
 /** JSON with sorted keys, so the same object always compares equal, whatever order SQLite hands keys back in. */
 function stable(v: unknown): string {
@@ -159,7 +159,7 @@ function snapshot(): Snapshot {
 /** Pages that want arrivals as they happen, and how to tell the running sync. */
 let watchers = 0;
 let poke: (() => void) | null = null;
-const WATCH_MS = 5000;
+const WATCH_MS = 8000;
 
 /** Pull now and every few seconds while the returned stop hasn't been called. */
 export function watchShelf(): () => void {

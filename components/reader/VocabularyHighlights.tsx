@@ -85,7 +85,7 @@ export function VocabularyHighlights({ root }: { root: HTMLElement | null }) {
     const observer = new IntersectionObserver(changes => { for (const change of changes) { if (change.isIntersecting) { active.add(change.target); schedule(change.target); } else { active.delete(change.target); queue.delete(change.target); clear(change.target); } } }, { rootMargin: "400px" });
     root.querySelectorAll("[data-block]").forEach(el => observer.observe(el));
     // Existing annotation spans can be replaced by React. Rebuild only their visible ranges.
-    const mutations = new MutationObserver(changes => { for (const change of changes) { const element = change.target instanceof Element ? change.target : change.target.parentElement; const block = element?.closest("[data-block]"); if (block && active.has(block)) schedule(block); } });
+    const mutations = new MutationObserver(changes => { for (const change of changes) { const element = change.target instanceof Element ? change.target : change.target.parentElement; if (element?.closest(".word-wise")) continue; const block = element?.closest("[data-block]"); if (block && active.has(block)) schedule(block); } });
     mutations.observe(root, { childList: true, characterData: true, subtree: true });
     return () => { stopped = true; controller.abort(); release(); leave(); root.removeEventListener("pointermove", move); root.removeEventListener("pointerleave", leave); CSS.highlights.delete("gloss-vocabulary-hover"); root.removeEventListener("click", click, true); observer.disconnect(); mutations.disconnect(); cancelAnimationFrame(frame); CSS.highlights.delete("gloss-vocabulary"); };
   }, [root, entries, enabled]);
