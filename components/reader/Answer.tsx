@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, memo, type ReactNode } from "react";
-import { parseAnswerBlocks, tableCells } from "@/lib/answer-markdown";
+import { parseAnswerBlocksProgressive, tableCells } from "@/lib/answer-markdown";
 import { undash } from "@/lib/article";
 import type { Source } from "@/lib/models";
 import { useI18n } from "@/lib/ui-lang";
@@ -141,7 +141,7 @@ function tokens(text: string, plain = false, sources?: Source[]): ReactNode[] {
 /** `plain` drops paragraph citations, for answers that live outside a reader. */
 function AnswerImpl({ text, streaming, plain = false, sources }: { text: string; streaming?: boolean; plain?: boolean; sources?: Source[] }) {
   const { t } = useI18n();
-  const parts = parseAnswerBlocks(undash(plain ? text.replace(/\s?\[\s*¶[^\]]{0,60}\]/g, "") : text));
+  const parts = parseAnswerBlocksProgressive(undash(plain ? text.replace(/\s?\[\s*¶[^\]]{0,60}\]/g, "") : text));
   const caret = streaming ? <span className="caret" aria-hidden /> : null;
   if (!parts.length) return streaming ? <p>{caret}</p> : null;
   return (

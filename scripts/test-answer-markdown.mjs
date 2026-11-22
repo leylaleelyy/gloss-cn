@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseAnswerBlocks, tableCells } from '../lib/answer-markdown.ts';
+import { parseAnswerBlocks, parseAnswerBlocksProgressive, tableCells } from '../lib/answer-markdown.ts';
 const parts=parseAnswerBlocks('## 图片概览\n这是**说明**。\n### 关键细节\n- 第一项\n- 第二项\n接着解释。\n1. 首先\n2. 然后\n> 注意局限\n\n---\n\n| 项目 | 解释 |\n| --- | --- |\n| A | 内容 |');
 assert.deepEqual(parts.map(p=>p.kind),['heading','p','heading','ul','p','ol','quote','hr','table']);
 assert.equal(parts[0].lines[0],'图片概览');
@@ -10,4 +10,15 @@ assert.deepEqual(parseAnswerBlocks('```text\n## literal\n<script>bad()</script>'
 assert.equal(parseAnswerBlocks('A C# example.')[0].kind,'p');
 assert.equal(parseAnswerBlocks('### Heading\nText\n')[1].lines[0],'Text');
 assert.equal(parseAnswerBlocks('3. Third\n4. Fourth')[0].start,3);
+for (const answer of [
+  'First paragraph.\n\nSecond paragraph grows here.',
+  '## Heading\n\n- one\n- two\n\n| A | B |\n| --- | --- |\n| 1 | 2 |',
+  'Intro\n\n```text\n## literal\n\nmore\n```',
+]) {
+  for (let i = 1; i <= answer.length; i += 3) {
+    const part = answer.slice(0, i);
+    assert.deepEqual(parseAnswerBlocksProgressive(part), parseAnswerBlocks(part), 'progressive parse matches full parse at '+i);
+  }
+}
 console.log('PASS: headings without blank lines, mixed blocks, ordered lists, tables, quotes and incomplete code fences.');
+console.log('PASS: progressive parsing matches a full parse at every streaming prefix.');

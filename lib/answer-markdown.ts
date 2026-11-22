@@ -50,3 +50,27 @@ export function parseAnswerBlocks(text: string): AnswerPart[] {
   }
   return parts;
 }
+
+/**
+ * While an answer streams in, everything before the last blank line is already
+ * settled. Parse that prefix once and only re-parse the growing tail. Any code
+ * fence opts out, since blank lines inside it are not block boundaries.
+ */
+const prefixCache = new Map<string, AnswerPart[]>();
+
+export function parseAnswerBlocksProgressive(text: string): AnswerPart[] {
+  if (!text.includes("\n\n") || text.includes("```") || text.includes("~~~")) return parseAnswerBlocks(text);
+  const cut = text.lastIndexOf("\n\n");
+  const prefix = text.slice(0, cut + 2);
+  const tail = text.slice(cut + 2);
+  let settled = prefixCache.get(prefix);
+  if (!settled) {
+    settled = parseAnswerBlocks(prefix);
+    if (prefixCache.size >= 24) {
+      const oldest = prefixCache.keys().next().value;
+      if (oldest !== undefined) prefixCache.delete(oldest);
+    }
+    prefixCache.set(prefix, settled);
+  }
+  return tail ? [...settled, ...parseAnswerBlocks(tail)] : settled;
+}

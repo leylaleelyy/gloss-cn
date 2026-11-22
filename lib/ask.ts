@@ -12,6 +12,7 @@ import type { ModelKey, StreamEvent, Usage } from "./models";
 import { MODELS, modelOf } from "./models";
 
 import { readProvider } from "./provider-config";
+import { shrinkImageForVision } from "./vision-image";
 
 export function readApiKey(): string { return readProvider().apiKey; }
 
@@ -337,10 +338,11 @@ async function explainImage(ix: DocIndex, gloss: Gloss) {
     const block = ix.article.blocks[index];
     if (!block?.src) throw new Error("图片已不可用，请重新打开文章。");
     const context = ix.article.blocks.slice(Math.max(0,index-2),index+3).map(b => b.runs.map(r=>r.text).join("")).join("\n").slice(0,5000);
+    const image = await shrinkImageForVision(block.src);
     const response = await fetch("/api/image-explain", {
       method:"POST", signal:controller.signal,
       headers:{"Content-Type":"application/json",...providerHeaders()},
-      body:JSON.stringify({image:block.src, caption:block.alt, context, title:ix.article.title,
+      body:JSON.stringify({image, caption:block.alt, context, title:ix.article.title,
         language:useStore.getState().settings.responseLanguage,
         question:gloss.question, history:gloss.turns.filter(t=>!t.streaming && !t.error).slice(-8).map(t=>({role:t.role,content:t.content}))})
     });
