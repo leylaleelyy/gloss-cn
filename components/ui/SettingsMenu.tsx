@@ -182,7 +182,7 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && (
             <div className="mb-3 w-full">
               <Seg
-                label={t("settings.title")}
+                label={t("settings.section")}
                 value={tab}
                 onChange={setTab}
                 options={[
@@ -379,10 +379,23 @@ export function SettingsMenu({ compact = false }: { compact?: boolean }) {
           {!compact && tab === "answers" && (
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-[12.5px] text-ink-3" htmlFor="response-language">{t("settings.responseLanguage")}</label>
-                <select id="response-language" value={responseLanguage(settings.responseLanguage)} onChange={(e) => set({ responseLanguage: responseLanguage(e.target.value) })} className="mb-2 h-8 w-full rounded-lg border border-rule bg-sunk px-2 text-[13px] text-ink">
-                  {RESPONSE_LANGUAGES.map((language) => <option key={language.key} value={language.key}>{language.label}</option>)}
-                </select>
+                <p className="mb-2 text-[12.5px] text-ink-3">{t("settings.responseLanguage")}</p>
+                <div role="radiogroup" aria-label={t("settings.responseLanguage")} className="mb-2 grid grid-cols-2 gap-1.5">
+                  {RESPONSE_LANGUAGES.map((language) => (
+                    <button
+                      key={language.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={responseLanguage(settings.responseLanguage) === language.key}
+                      onClick={() => set({ responseLanguage: responseLanguage(language.key) })}
+                      className={`flex min-h-9 min-w-0 items-center justify-center rounded-lg border px-2 py-1 text-center text-[12px] leading-tight transition-colors ${
+                        responseLanguage(settings.responseLanguage) === language.key ? "border-transparent bg-rubric-wash font-medium text-rubric-text" : "border-rule text-ink-3 hover:border-rule-strong hover:text-ink"
+                      }`}
+                    >
+                      {language.label}
+                    </button>
+                  ))}
+                </div>
                 <p className="mb-4 text-[12px] leading-snug text-ink-4">{t("settings.responseHint")}</p>
                 <LearningPreferences />
                 <p className="mb-2 text-[12.5px] text-ink-3">{t("settings.answerLength")}</p>

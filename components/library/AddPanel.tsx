@@ -3,8 +3,9 @@
 import { SignInButton } from "@/components/account/Auth";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, BookOpen, BookmarkPlus, Check, Copy, FileUp, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertCircle, BookOpen, BookmarkPlus, Check, Copy, FileUp, Link2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { importFromUrl, importFromFile, keep, looksLikeUrl } from "@/lib/import";
+import { accountsEnabled } from "@/lib/accounts";
 import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
 import { Mark, MarkStack, type AgentMark } from "./AgentMarks";
@@ -40,16 +41,18 @@ export function AddPanel({ tab, onTab, onClose, signedIn }: { tab: AddTab; onTab
       <div className="absolute inset-0 bg-ink/20 backdrop-blur-[2px]" style={{ animation: "fade 0.2s both" }} onClick={onClose} />
       <section role="dialog" aria-modal aria-label={t("add.dialog")} className="add-panel">
         <header className="flex items-center justify-between gap-3">
-          <div className="lib-sort !ml-0" role="tablist" aria-label={t("add.title")}>
-            <button type="button" role="tab" aria-selected={tab === "agent"} aria-checked={tab === "agent"} onClick={() => onTab("agent")}>
-              {t("add.agent")}
+          <div className="lib-sort no-scrollbar !ml-0 max-w-[calc(100%-2.75rem)] overflow-x-auto" role="tablist" aria-label={t("add.title")}>
+            <button type="button" role="tab" aria-selected={tab === "agent"} aria-checked={tab === "agent"} onClick={() => onTab("agent")} className="whitespace-nowrap">
+              <span className="sm:hidden">{t("add.agentShort")}</span><span className="hidden sm:inline">{t("add.agent")}</span>
             </button>
-            <button type="button" role="tab" aria-selected={tab === "links"} aria-checked={tab === "links"} onClick={() => onTab("links")}>
-              {t("add.links")}
+            <button type="button" role="tab" aria-selected={tab === "links"} aria-checked={tab === "links"} onClick={() => onTab("links")} className="whitespace-nowrap">
+              <span className="sm:hidden">{t("add.linksShort")}</span><span className="hidden sm:inline">{t("add.links")}</span>
             </button>
-            <button type="button" role="tab" aria-selected={tab === "files"} onClick={() => onTab("files")}>{t("add.files")}</button>
+            <button type="button" role="tab" aria-selected={tab === "files"} onClick={() => onTab("files")} className="whitespace-nowrap">
+              <span className="sm:hidden">{t("add.filesShort")}</span><span className="hidden sm:inline">{t("add.files")}</span>
+            </button>
           </div>
-          <button type="button" aria-label={t("add.close")} data-tip={t("add.close")} data-tip-kbd="Esc" onClick={onClose} className="grid size-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+          <button type="button" aria-label={t("add.close")} data-tip={t("add.close")} data-tip-kbd="Esc" onClick={onClose} className="grid size-9 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
             <X size={17} />
           </button>
         </header>
@@ -97,6 +100,7 @@ function linksIn(text: string): string[] {
 }
 
 function Links() {
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
@@ -149,14 +153,8 @@ function Links() {
 
   return (
     <div className="mt-5">
-      <p className="text-[19px] font-serif leading-tight text-ink">Save links to your library</p>
-      <p className="mt-1 text-[13px] text-ink-3">
-        One or many, a line each. Gloss reads each page in and sorts it onto a topic. EPUB and PDF links work too. Leaving Pocket, Instapaper or Raindrop?{" "}
-        <button type="button" onClick={() => fileRef.current?.click()} className="text-ink-2 underline decoration-rule-strong underline-offset-2 hover:text-ink">
-          Drop its export here
-        </button>
-        .
-      </p>
+      <p className="text-[19px] font-serif leading-tight text-ink">{t("links.title")}</p>
+      <p className="mt-1 text-[13px] leading-relaxed text-ink-3">{t("links.intro")}</p>
       <input
         ref={fileRef}
         type="file"
@@ -168,15 +166,16 @@ function Links() {
           e.target.value = "";
         }}
       />
-      <textarea
-        ref={ref}
-        value={text}
+      <div
+        className={`mt-3 overflow-hidden rounded-[14px] border bg-bg transition-colors ${over ? "border-[var(--rubric)] bg-[var(--rubric-wash)]" : "border-rule focus-within:border-rule-strong"}`}
         onDragOver={(e) => {
           if (!Array.from(e.dataTransfer.types).includes("Files")) return;
           e.preventDefault();
           setOver(true);
         }}
-        onDragLeave={() => setOver(false)}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+        }}
         onDrop={(e) => {
           const f = e.dataTransfer.files?.[0];
           setOver(false);
@@ -184,25 +183,44 @@ function Links() {
           e.preventDefault();
           void fromExport(f);
         }}
-        style={over ? { borderColor: "var(--rubric)", borderStyle: "dashed" } : undefined}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void save();
-          }
-        }}
-        placeholder={"https://paulgraham.com/greatwork.html\nhttps://..."}
-        rows={4}
-        className="add-text"
-        aria-label="Links to save"
-      />
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-[12.5px] text-ink-4">{urls.length ? `${urls.length} link${urls.length === 1 ? "" : "s"}` : text.trim() ? "No links found yet" : ""}</span>
-        <button type="button" onClick={save} disabled={!urls.length || busy} className="add-btn">
-          {busy && <Loader2 size={14} className="animate-spin" />}
-          {busy ? "Saving" : urls.length > 1 ? `Save ${Math.min(urls.length, BATCH)}` : "Save"}
-        </button>
+      >
+        <div className="flex items-center justify-between gap-2 px-3.5 pt-2.5">
+          <span className="text-[11.5px] font-medium text-ink-4">{over ? t("links.dropHint") : t("links.pasteHint")}</span>
+          <button type="button" onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11.5px] font-medium text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+            <FileUp size={13} aria-hidden /> {t("links.import")}
+          </button>
+        </div>
+        <textarea
+          ref={ref}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void save();
+            }
+          }}
+          placeholder={"https://paulgraham.com/greatwork.html\nhttps://..."}
+          rows={4}
+          className="block w-full resize-y bg-transparent px-3.5 py-2 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-4"
+          aria-label="Links to save"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-rule px-3 py-2">
+          <span className={`rounded-full px-2 py-0.5 text-[11.5px] tabular-nums ${urls.length ? "bg-[var(--rubric-wash)] text-rubric-text" : "text-ink-4"}`}>
+            {urls.length ? t(urls.length === 1 ? "links.count" : "links.countPlural", { count: urls.length }) : text.trim() ? t("links.notFound") : t("links.none")}
+          </span>
+          <div className="flex items-center gap-2">
+            {text && (
+              <button type="button" onClick={() => { setText(""); setNote(null); ref.current?.focus(); }} className="rounded-full px-2.5 py-1 text-[12px] text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+                {t("links.clear")}
+              </button>
+            )}
+            <button type="button" onClick={save} disabled={!urls.length || busy} className="add-btn">
+              {busy && <Loader2 size={14} className="animate-spin" />}
+              {busy ? t("links.saving") : urls.length > 1 ? t("links.saveN", { count: Math.min(urls.length, BATCH) }) : t("links.save")}
+            </button>
+          </div>
+        </div>
       </div>
       {note && <p className="mt-2 text-[12.5px] text-ink-3">{note}</p>}
       {rows.length > 0 && (
@@ -276,6 +294,7 @@ const LABELS: { label: string; mark?: AgentMark }[] = [
 ];
 
 function Agent({ signedIn }: { signedIn: boolean }) {
+  const { t } = useI18n();
   const [conns, setConns] = useState<Conn[] | null>(null);
   const [made, setMade] = useState<{ token: string; label: string } | null>(null);
   const [label, setLabel] = useState("Grok Bot");
@@ -295,12 +314,16 @@ function Agent({ signedIn }: { signedIn: boolean }) {
     return (
       <div className="mt-5">
         <AgentIntro />
-        <p className="mt-4 text-[13.5px] text-ink-2">An agent saves to the library in your account, so it needs you signed in.</p>
-        <SignInButton mode="modal">
-          <button type="button" className="add-btn mt-4">
-            Sign in to connect
-          </button>
-        </SignInButton>
+        <div className="mt-4 rounded-[14px] border border-rule bg-bg px-4 py-4">
+          <p className="text-[13.5px] leading-relaxed text-ink-2">{accountsEnabled ? t("agent.signInBody") : t("agent.accountsOff")}</p>
+          {accountsEnabled && (
+            <SignInButton mode="modal">
+              <button type="button" className="add-btn mt-3">
+                {t("agent.signIn")}
+              </button>
+            </SignInButton>
+          )}
+        </div>
       </div>
     );
 
@@ -326,36 +349,41 @@ function Agent({ signedIn }: { signedIn: boolean }) {
       {made ? (
         <Setup token={made.token} label={made.label} origin={origin} />
       ) : (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <div className="lib-sort !ml-0" role="radiogroup" aria-label="Which agent">
+        <div className="mt-4 rounded-[14px] border border-rule bg-bg p-3.5">
+          <p className="text-[12px] font-medium text-ink-3">{t("agent.stepChoose")}</p>
+          <div className="lib-sort !ml-0 mt-2 max-w-full overflow-x-auto no-scrollbar" role="radiogroup" aria-label={t("agent.which")}>
             {LABELS.map((l) => (
-              <button key={l.label} type="button" role="radio" aria-checked={label === l.label} onClick={() => setLabel(l.label)} className="inline-flex items-center gap-1.5">
+              <button key={l.label} type="button" role="radio" aria-checked={label === l.label} onClick={() => setLabel(l.label)} className="inline-flex whitespace-nowrap items-center gap-1.5">
                 {l.mark && <Mark k={l.mark} size={14} />}
                 {l.label}
               </button>
             ))}
           </div>
-          <button type="button" onClick={create} disabled={busy} className="add-btn">
-            {busy && <Loader2 size={14} className="animate-spin" />}
-            Make a connection
-          </button>
-          {err && <p className="w-full text-[12.5px] text-rubric-text">{err}</p>}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-rule pt-3">
+            <p className="text-[12px] leading-snug text-ink-3">{t("agent.stepCreate")}</p>
+            <button type="button" onClick={create} disabled={busy} className="add-btn">
+              {busy && <Loader2 size={14} className="animate-spin" />}
+              {busy ? t("agent.making") : t("agent.make")}
+            </button>
+          </div>
+          {err && <p className="mt-2 text-[12.5px] text-rubric-text">{err}</p>}
         </div>
       )}
       {conns && conns.length > 0 && (
         <div className="mt-6">
-          <p className="lib-label">Connected</p>
-          <ul className="mt-2 divide-y divide-rule">
+          <p className="lib-label">{t("agent.connected")}</p>
+          <ul className="mt-2 space-y-2">
             {conns.map((c) => (
-              <li key={c.id} className="flex items-center gap-3 py-2.5 text-[13px]">
+              <li key={c.id} className="flex items-center gap-3 rounded-[12px] border border-rule bg-bg px-3 py-2.5 text-[13px]">
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-sunk text-ink-3" aria-hidden><Link2 size={15} /></span>
                 <span className="min-w-0 flex-1">
-                  <span className="font-medium text-ink">{c.label}</span>
-                  <span className="ml-2 text-ink-3">
-                    {c.lastUsedAt ? `last used ${new Date(c.lastUsedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "not used yet"}
+                  <span className="block truncate font-medium text-ink">{c.label}</span>
+                  <span className="block text-[12px] text-ink-3">
+                    {c.lastUsedAt ? t("agent.lastUsed", { date: new Date(c.lastUsedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" }) }) : t("agent.notUsed")}
                   </span>
                 </span>
-                <button type="button" onClick={() => revoke(c.id)} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
-                  <Trash2 size={13} /> Revoke
+                <button type="button" onClick={() => revoke(c.id)} className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+                  <Trash2 size={13} /> {t("agent.revoke")}
                 </button>
               </li>
             ))}
@@ -372,8 +400,8 @@ function AgentIntro() {
       <Glyph k="agent" size={46} className="shrink-0" />
       <div>
         <p className="font-serif text-[19px] leading-tight text-ink">Let your agent shelve for you</p>
-        <p className="mt-1 text-[13px] leading-[1.5] text-ink-3">
-          Gloss has an MCP server. Give it to Grok Bot, Claude or ChatGPT, then ask: &ldquo;go through my X bookmarks from this month and save the articles to my Gloss library.&rdquo; Each one is read in, sorted onto a topic, and on your shelves the next time you open Gloss.
+        <p className="mt-1 text-[13px] leading-[1.55] text-ink-3">
+          Give Grok Bot, Claude or ChatGPT a private connection to your Gloss library. Ask it to save articles, and each one is read in, sorted onto a topic, and waiting on your shelves next time you open Gloss.
         </p>
       </div>
     </div>

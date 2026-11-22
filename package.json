@@ -31,7 +31,8 @@
     "test:ipad": "node scripts/test-ipad-mini.mjs",
     "test:reader-reliability": "node scripts/test-book-settings.mjs && node scripts/test-store-persistence.mjs && node scripts/test-touch-selection.mjs && node scripts/test-shelving.mjs",
     "test:book-open": "node scripts/test-book-open.mjs",
-    "test:ui-language": "node scripts/test-ui-language.mjs"
+    "test:ui-language": "node scripts/test-ui-language.mjs",
+    "test:vocabulary-page": "node scripts/test-vocabulary-page.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.13",
