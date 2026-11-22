@@ -237,16 +237,22 @@ export function startSync(userId: string) {
         // A text goes up with its first shelf entry, and again when it is replaced (its rev changes).
         // Samples ship with the app. A text already on the shelf still uploads a missing document.
         if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
-          const doc = await loadDoc(id);
-          const images = Boolean(doc && hasEmbeddedImages(doc));
-          // Keep retrying until this device actually gets its picture-bearing text to D1.
-          // A baseline reset alone must not become the only chance to repair it.
-          const needsRepack = Boolean(doc && images && !alreadyRepacked.has(id));
-          if (doc && (row || !seenEntry?.[2] || needsRepack)) {
-            row ??= { id, articleId: e.articleId, data: e.data };
-            row.data = { ...(e.data as Record<string, unknown>), docAt: Date.now() };
-            row.doc = await uploadDoc(e.articleId, packDoc(doc));
-            row.images = images;
+          // Most pushes carry annotations, not text changes. Once a text is known to
+          // have no pictures, there is no reason to open its megabyte-sized document
+          // again on every push.
+          const skipDoc = !dataChanged && Boolean(seenEntry?.[2]) && alreadyRepacked.has(id);
+          if (!skipDoc) {
+            const doc = await loadDoc(id);
+            const images = Boolean(doc && hasEmbeddedImages(doc));
+            // Keep retrying until this device actually gets its picture-bearing text to D1.
+            const needsRepack = Boolean(doc && images && !alreadyRepacked.has(id));
+            if (doc && (row || !seenEntry?.[2] || needsRepack)) {
+              row ??= { id, articleId: e.articleId, data: e.data };
+              row.data = { ...(e.data as Record<string, unknown>), docAt: Date.now() };
+              row.doc = await uploadDoc(e.articleId, packDoc(doc));
+              row.images = images;
+            }
+            if (doc && !images) markImagesRepacked([id]);
           }
         }
         if (!row) continue;
