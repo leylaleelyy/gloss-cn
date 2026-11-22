@@ -3,7 +3,7 @@
 import { SignInButton } from "@/components/account/Auth";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, BookmarkPlus, Check, Copy, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertCircle, BookOpen, BookmarkPlus, Check, Copy, FileUp, Loader2, Plus, Trash2, X } from "lucide-react";
 import { importFromUrl, importFromFile, keep, looksLikeUrl } from "@/lib/import";
 import { normalizeUrl } from "@/lib/links";
 import { useStore } from "@/lib/store";
@@ -440,33 +440,121 @@ function CopyBlock({ title, body, text }: { title: string; body: string; text: s
 
 
 function Files() {
+  const { t } = useI18n();
+  const input = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState("");
-  const [results, setResults] = useState<string[]>([]);
+  const [items, setItems] = useState<{ name: string; title?: string; status: "working" | "ok" | "error"; detail?: string }[]>([]);
   const pending = useRef(false);
+
+  const supported = (file: File) => /\.(epub|pdf|txt|md|markdown)$/i.test(file.name);
+
   const open = async (files: File[]) => {
     if (pending.current) return;
     pending.current = true;
-    setBusy(true); setResults([]);
+    setBusy(true);
     try {
+      let next = items.length;
       for (const file of files) {
-        setProgress(`Opening ${file.name}`);
-        const result = await importFromFile(file, (_, label) => setProgress(`${file.name}: ${label || "Reading…"}`));
-        const error = result.ok ? await keep(result.article, result.file) : result.error;
-        setResults((items) => [...items, error ? `${file.name}: ${error}` : `Saved ${result.ok ? result.article.title : file.name}`]);
+        if (!supported(file)) {
+          setItems((list) => [...list, { name: file.name, status: "error", detail: t("files.unsupported") }]);
+          continue;
+        }
+        const index = next++;
+        setItems((list) => [...list, { name: file.name, status: "working", detail: t("files.reading") }]);
+        const update = (patch: { title?: string; status?: "working" | "ok" | "error"; detail?: string }) =>
+          setItems((list) => list.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+        const result = await importFromFile(file, (_, label) => update({ detail: label || t("files.reading") }));
+        if (!result.ok) {
+          update({ status: "error", detail: result.error });
+          continue;
+        }
+        const error = await keep(result.article, result.file);
+        if (error) update({ status: "error", detail: error });
+        else update({ status: "ok", title: result.article.title, detail: t("files.saved") });
       }
-    } finally { pending.current = false; setBusy(false); setProgress(""); }
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
   };
+
   return (
-    <div className="mt-6" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void open(Array.from(event.dataTransfer.files)); }}>
-      <p className="text-sm text-ink-2">Open or drop EPUB, PDF, text, or Markdown files. Books are saved to your library for reading and annotation.</p>
-      <input className="mt-5 block w-full text-sm" aria-label="Choose books or documents" type="file" multiple disabled={busy}
-        accept=".epub,.pdf,.txt,.md,.markdown,application/epub+zip,application/pdf,text/plain,text/markdown"
-        onChange={(event) => { const files = Array.from(event.target.files || []); event.target.value = ""; void open(files); }} />
-      <div role="status" className="mt-4 space-y-2 text-sm text-ink-2">
-        {progress && <p>{progress}</p>}
-        {results.map((result, index) => <p key={index}>{result}</p>)}
+    <div className="mt-5">
+      <div
+        role="button"
+        tabIndex={busy ? -1 : 0}
+        aria-disabled={busy}
+        aria-label={t("files.choose")}
+        onClick={() => !busy && input.current?.click()}
+        onKeyDown={(event) => {
+          if (busy) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            input.current?.click();
+          }
+        }}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          void open(Array.from(event.dataTransfer.files));
+        }}
+        className={`group rounded-[18px] border-2 border-dashed px-6 py-7 text-center outline-none transition-[border-color,background-color,transform] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rubric)] ${
+          busy
+            ? "cursor-default border-rule bg-bg/60"
+            : dragging
+              ? "scale-[0.995] cursor-copy border-[var(--rubric)] bg-[var(--rubric-wash)]"
+              : "cursor-pointer border-rule bg-bg hover:border-rule-strong hover:bg-sunk/40"
+        }`}
+      >
+        <span className={`mx-auto grid size-12 place-items-center rounded-[14px] transition-colors ${dragging ? "bg-[var(--rubric)] text-white" : "bg-sunk text-ink-3 group-hover:text-ink-2"}`} aria-hidden>
+          {busy ? <Loader2 size={22} className="animate-spin" /> : <FileUp size={22} strokeWidth={1.8} />}
+        </span>
+        <p className="mt-3 text-[15px] font-medium leading-tight text-ink">{dragging ? t("files.dropNow") : t("files.dropTitle")}</p>
+        <p className="mx-auto mt-1.5 max-w-[320px] text-[13px] leading-relaxed text-ink-3">{t("files.hint")}</p>
+        <span className={`mt-4 inline-flex h-9 items-center rounded-full px-4 text-[13px] font-medium transition-colors ${busy ? "bg-sunk text-ink-3" : "bg-ink text-bg group-hover:bg-ink/90"}`}>
+          {busy ? t("files.opening") : t("files.choose")}
+        </span>
+        <p className="mt-3 text-[11.5px] tracking-wide text-ink-4">{t("files.formats")}</p>
       </div>
+      <input
+        ref={input}
+        className="sr-only"
+        aria-label={t("files.choose")}
+        type="file"
+        multiple
+        disabled={busy}
+        accept=".epub,.pdf,.txt,.md,.markdown,application/epub+zip,application/pdf,text/plain,text/markdown"
+        onChange={(event) => {
+          const files = Array.from(event.target.files || []);
+          event.target.value = "";
+          void open(files);
+        }}
+      />
+
+      {items.length > 0 && (
+        <ul role="status" aria-live="polite" className="mt-3 space-y-2">
+          {items.map((item, index) => (
+            <li key={`${item.name}:${index}`} className="flex items-start gap-3 rounded-[12px] border border-rule bg-bg px-3 py-2.5">
+              <span className={`mt-[1px] shrink-0 ${item.status === "ok" ? "text-good" : item.status === "error" ? "text-rubric-text" : "text-ink-4"}`} aria-hidden>
+                {item.status === "working" ? <Loader2 size={15} className="animate-spin" /> : item.status === "ok" ? <Check size={15} /> : <AlertCircle size={15} />}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-medium leading-snug text-ink">{item.title ?? item.name}</span>
+                <span className={`mt-0.5 block truncate text-[12px] leading-snug ${item.status === "error" ? "text-rubric-text" : "text-ink-3"}`}>{item.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
