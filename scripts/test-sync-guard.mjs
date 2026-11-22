@@ -1,0 +1,22 @@
+// Run against a local server: GLOSS_TEST_URL=http://localhost:3100 node scripts/test-sync-guard.mjs
+// A bulk deletion must wait for a second confirmation; cancelling sends nothing.
+import assert from 'node:assert/strict';import {spawn} from 'node:child_process';import {readFile,mkdtemp} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
+const profile=await mkdtemp(join(tmpdir(),'gsg-'));const chrome=spawn('/usr/bin/chromium',['--no-sandbox','--headless','--disable-gpu','--no-first-run','--remote-debugging-port=0','--user-data-dir='+profile],{stdio:'ignore'});const sleep=ms=>new Promise(r=>setTimeout(r,ms));let ws;
+try{let port;for(let i=0;i<50;i++){try{port=(await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0];break}catch{await sleep(100)}}const tab=await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`,{method:'PUT'})).json();ws=new WebSocket(tab.webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));let id=0;const w=new Map();ws.addEventListener('message',e=>{const m=JSON.parse(e.data);if(w.has(m.id)){w.get(m.id)(m);w.delete(m.id)}});const send=(method,params={})=>new Promise((res,rej)=>{const n=++id;const t=setTimeout(()=>rej(Error('timeout')),60000);w.set(n,m=>{clearTimeout(t);m.error?rej(m.error):res(m.result)});ws.send(JSON.stringify({id:n,method,params}))});const ev=async e=>{const r=await send('Runtime.evaluate',{expression:e,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
+await send('Runtime.enable');await send('Page.enable');
+await send('Page.addScriptToEvaluateOnNewDocument',{source:`(()=>{const real=window.fetch;window.__pushes=[];window.fetch=async(u,i)=>{const s=String(u);if(s.includes('/api/sync')){if(!i||!i.method||i.method==='GET')return new Response(JSON.stringify({now:'2026-11-22T12:00:00.000Z',changes:{articles:[],highlights:[],glosses:[],briefs:[],progress:[],vocabulary:[],learning:[],settings:[]}}),{headers:{'content-type':'application/json'}});window.__pushes.push(JSON.parse(i.body));return new Response(JSON.stringify({ok:true,count:0}),{headers:{'content-type':'application/json'}})}return real(u,i)}})()`});
+await send('Page.navigate',{url:(process.env.GLOSS_TEST_URL || 'http://localhost:3100')+'/robots.txt'});await sleep(700);
+await ev(`(()=>{const p={sub:'guard2',email:'g@example.com',name:'Guard',exp:Math.floor(Date.now()/1000)+3600};const b=s=>btoa(JSON.stringify(s)).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');localStorage.clear();localStorage.setItem('gloss:google-token','e30.'+b(p)+'.sig');localStorage.setItem('gloss:google-seen','1');const seen={};for(let i=1;i<=6;i++)seen['a'+i]=['x','a'+i];localStorage.setItem('gloss:sync:guard2',JSON.stringify({version:2,since:'2026-11-22T11:00:00.000Z',seen:{articles:seen,highlights:{},glosses:{},briefs:{},progress:{},vocabulary:{},learning:{},settings:{}}}));localStorage.setItem('gloss:sync-deleted-articles',JSON.stringify(Object.keys(seen)));return true})()`);
+await send('Page.navigate',{url:(process.env.GLOSS_TEST_URL || 'http://localhost:3100')+'/library'});await sleep(2500);
+assert.ok(await ev(`!!document.querySelector('[role=dialog]')`),'asks before deleting six books');
+assert.equal((await ev(`JSON.stringify(window.__pushes)`)).length,2,'nothing pushed yet');
+await ev(`Array.from(document.querySelectorAll('[role=dialog] button')).find(b=>b.textContent.includes('Cancel')).click()`);await sleep(500);
+assert.equal((await ev(`JSON.stringify(window.__pushes)`)).length,2,'cancel sends no push');
+await ev(`window.dispatchEvent(new Event('gloss:sync-now'))`);await sleep(1000);
+assert.ok(await ev(`!!document.querySelector('[role=dialog]')`),'asks again on retry');
+await ev(`Array.from(document.querySelectorAll('[role=dialog] button')).find(b=>b.textContent.includes('Delete and sync')).click()`);await sleep(1500);
+const pushes=JSON.parse(await ev(`JSON.stringify(window.__pushes)`));
+assert.ok(pushes.some(p=>p.confirm===true),'confirmed push carries the flag');
+assert.ok(pushes.some(p=>(p.changes.articles||[]).filter(r=>r.deleted).length===6),'six deletions sent after confirmation');
+console.log('PASS: a six-book deletion waits for confirmation and cancel keeps everything');
+}finally{ws?.close();chrome.kill()}

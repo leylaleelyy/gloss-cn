@@ -27,6 +27,7 @@ import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-st
 import { googleAuthHeaders, signOutGoogle } from "./google-auth";
 import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
 import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
+import { confirmSyncDeletions } from "./sync-guard";
 import { SYNCED_SETTING_KEYS } from "./settings";
 
 const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning", "settings"] as const;
@@ -140,6 +141,7 @@ export function startSync(userId: string) {
   };
 
   let stopped = false;
+  let deletionsApproved = false;
   // One operation at a time: a pull never lands in the middle of a push.
   let chain: Promise<unknown> = Promise.resolve();
   const serial = (fn: () => Promise<void>) => (chain = chain.then(() => (stopped ? undefined : fn())).catch(() => {}));
@@ -177,6 +179,17 @@ export function startSync(userId: string) {
       return;
     }
 
+    const tombstones = rows.filter((row) => row.row.deleted);
+    const articleDeletes = tombstones.filter((row) => row.c === "articles").length;
+    if (!deletionsApproved && (articleDeletes > 5 || tombstones.length > 30)) {
+      const ok = await confirmSyncDeletions(articleDeletes, tombstones.length);
+      if (!ok) {
+        setSyncStatus("error", "Sync paused: deletions were not confirmed.");
+        return;
+      }
+      deletionsApproved = true;
+    }
+
     // Too big for one request even alone: send the shelf entry without the text.
     for (const r of rows) {
       if (r.size > MAX_BODY && r.row.doc) {
@@ -191,7 +204,7 @@ export function startSync(userId: string) {
       if (!batch.length) return;
       const changes: Partial<Record<Collection, OutRow[]>> = {};
       for (const r of batch) (changes[r.c] ??= []).push(r.row);
-      const res = await fetchWithTimeout("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ changes }) }, PUSH_TIMEOUT);
+      const res = await fetchWithTimeout("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", ...googleAuthHeaders() }, body: JSON.stringify({ changes, confirm: deletionsApproved }) }, PUSH_TIMEOUT);
       if (res.status === 401) signOutGoogle();
       if (!res.ok) throw new Error(`push ${res.status}`);
       for (const r of batch) {

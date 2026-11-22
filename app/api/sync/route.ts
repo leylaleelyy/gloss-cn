@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   if (!userId) return Response.json({ error: "Sign in to sync." }, { status: 401 });
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return Response.json({ error: "Too large." }, { status: 413 });
 
-  let body: { changes?: Record<string, InRow[]> };
+  let body: { changes?: Record<string, InRow[]>; confirm?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -50,6 +50,15 @@ export async function POST(req: Request) {
     count += changes[table].length;
   }
   if (count > MAX_ROWS) return Response.json({ error: "Too many rows in one push." }, { status: 413 });
+
+  // A second lock on the server: a mass delete needs an explicit confirmation
+  // from the reader, so an old or broken client cannot empty an account.
+  const tombstones = Object.values(changes).flat().filter((row) => row.deleted);
+  const articleDeletes = (changes.articles ?? []).filter((row) => row.deleted).length;
+  if (!body.confirm && (articleDeletes > 5 || tombstones.length > 30)) {
+    return Response.json({ error: "Deletion confirmation required.", code: "confirm_deletions", articles: articleDeletes, total: tombstones.length }, { status: 409 });
+  }
+
   await pushRows(userId, changes);
   return Response.json({ ok: true, count });
 }

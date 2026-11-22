@@ -6,6 +6,7 @@ import "./globals.css";
 import { Tooltips } from "@/components/ui/Tooltips";
 import { GoogleProvider } from "@/components/account/GoogleProvider";
 import { SyncAgent } from "@/components/account/SyncAgent";
+import { SyncGuard } from "@/components/account/SyncGuard";
 import { OG_IMAGE, SITE_URL } from "@/lib/brand";
 
 const serif = Newsreader({
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GoogleProvider>
           {children}
           <SyncAgent />
+          <SyncGuard />
         </GoogleProvider>
         <Tooltips />
         {/* Plausible: cookieless page views, from the production site only, so previews and local runs never count. */}
