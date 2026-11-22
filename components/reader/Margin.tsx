@@ -2,9 +2,9 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { anchorToRange, blockEl } from "@/lib/anchor";
-import { MARKERS } from "@/lib/settings";
 import { useStore, type Gloss, type Highlight } from "@/lib/store";
-import { GlossCard, marginStyle } from "./GlossCard";
+import { GlossCard } from "./GlossCard";
+import { NoteCard } from "./NoteCard";
 
 import { placeMargin, type MarginItem } from "@/lib/margin-layout";
 
@@ -38,6 +38,7 @@ function MarginImpl({
   const active = activeGloss ?? (activeHighlight && notes.some((h) => h.id === activeHighlight) ? activeHighlight : null);
   const hover = useStore((s) => s.hoverGloss);
   const entering = useStore((s) => s.enteringGloss);
+  const enteringNote = useStore((s) => s.enteringHighlight);
   const setUI = useStore((s) => s.setUI);
   const size = useStore((s) => s.settings.size);
   const [layout, setLayout] = useState<Layout>({ tops: {}, anchors: {}, mini: {}, height: 0, hintTop: 0 });
@@ -173,20 +174,20 @@ function MarginImpl({
       ))}
 
       {notes.map((h) => (
-        <button
+        <NoteCard
           key={h.id}
           ref={(el) => {
             if (el) cards.current.set(h.id, el);
             else cards.current.delete(h.id);
           }}
-          type="button"
-          onClick={() => onOpenNote(h)}
-          className={`mnote${active === h.id ? " is-active" : ""}`}
-          style={{ ...marginStyle(layout.tops[h.id], !placed.current.has(h.id)), ["--note-c" as string]: MARKERS.find((m) => m.key === (h.color ?? "yellow"))?.color }}
-          aria-label={`Your note: ${h.note}. Edit note.`}
-        >
-          <span className="line-clamp-4 whitespace-pre-line">{h.note}</span>
-        </button>
+          note={h}
+          top={layout.tops[h.id]}
+          fresh={!placed.current.has(h.id)}
+          active={active === h.id}
+          entering={enteringNote === h.id}
+          onActivate={() => setUI({ activeGloss: null, activeHighlight: h.id })}
+          onEdit={() => onOpenNote(h)}
+        />
       ))}
     </div>
   );

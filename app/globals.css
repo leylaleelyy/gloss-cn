@@ -646,11 +646,16 @@ kbd,
 
 .m-hl {
   --mk: var(--mk-yellow);
-  background-color: color-mix(in oklab, var(--mk) var(--hl-a), transparent);
-  border-radius: 2px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  transition: background-color 0.2s;
+  /* Your marker is a line under the words, not a wash over them. */
+  background-color: transparent;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in oklab, var(--mk) 88%, transparent);
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.16em;
+  transition:
+    text-decoration-color 0.2s,
+    text-decoration-thickness 0.2s;
 }
 
 .m-hl[data-c="green"] {
@@ -664,23 +669,18 @@ kbd,
 }
 
 .m-hl.is-active {
-  background-color: color-mix(in oklab, var(--mk) var(--hl-a-strong), transparent);
+  text-decoration-color: var(--mk);
+  text-decoration-thickness: 2.5px;
 }
 
-/* A new highlight is swept on, left to right, like a real marker. */
+/* A new highlight draws itself in under the words. */
 .m-hl.is-new {
-  background-image: linear-gradient(color-mix(in oklab, var(--mk) var(--hl-a), transparent), color-mix(in oklab, var(--mk) var(--hl-a), transparent));
-  background-color: transparent;
-  background-repeat: no-repeat;
   animation: hl-sweep 0.5s var(--ease-out) both;
 }
 
 @keyframes hl-sweep {
   from {
-    background-size: 0% 100%;
-  }
-  to {
-    background-size: 100% 100%;
+    text-decoration-color: transparent;
   }
 }
 
@@ -1886,42 +1886,38 @@ a.desk-tile:focus-visible {
   border-bottom: 0;
 }
 
-/* The reader's own notes in the margin: their words, in the reading face,
-   on a rule the colour of the highlight they belong to. */
-.mnote {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  display: block;
-  padding: 6px 12px 7px 14px;
-  border-left: 2px solid color-mix(in oklab, var(--note-c) 80%, transparent);
-  border-radius: 0 9px 9px 0;
-  text-align: left;
-  font-family: var(--font-serif);
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--ink-2);
-  cursor: text;
-  transition:
-    background-color 0.25s,
-    color 0.25s;
-  will-change: transform;
+/* The reader's own notes: cards in the margin, built like the gloss cards
+   beside them, on a rule the colour of the highlight they belong to. */
+.note-card {
+  border-left-color: color-mix(in oklab, var(--note-c, var(--rubric)) 75%, transparent);
 }
 
-[data-face="book"] .mnote {
+.note-card:hover,
+.note-card:focus-visible,
+.note-card.is-active {
+  border-left-color: var(--note-c, var(--rubric));
+}
+
+.note-card .note-swatch {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--note-c, var(--rubric));
+}
+
+.note-card .note-text {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+[data-face="book"] .note-card .note-text {
   font-family: var(--font-book);
 }
 
-.mnote:hover,
-.mnote:focus-visible,
-.mnote.is-active {
-  background: color-mix(in oklab, var(--bg-raised) 70%, transparent);
+.note-card.is-active .note-text {
   color: var(--ink);
-}
-
-.mnote:focus-visible {
-  outline-offset: -2px;
 }
 
 /* Below the margin's width, a highlight with a note carries a small mark at its end. */
@@ -1952,8 +1948,7 @@ html[data-webkit="true"] .ob-backdrop {
 html[data-webkit="true"] .ob-backdrop { background: rgb(0 0 0 / 0.42); }
 html[data-webkit="true"] .ob-page-in > * { transition-delay: 0ms; }
 html[data-webkit="true"] .shelf-row { animation: none; }
-html[data-webkit="true"] .gloss,
-html[data-webkit="true"] .mnote { will-change: auto; }
+html[data-webkit="true"] .gloss { will-change: auto; }
 
 html[data-webkit="true"] .lib-top[data-scrolled],
 html[data-webkit="true"] header[class*="backdrop-blur"] { background: var(--bg); }
@@ -2092,7 +2087,8 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .prose-read[data-vocabulary-hover="true"] { --reading-cursor: var(--dictionary-cursor); }
   .prose-read .blk-text .m-hl:hover {
     --reading-cursor: url("/cursors/pen-yellow.svg") 3 3, pointer;
-    background-color: color-mix(in oklab, var(--mk) var(--hl-a-strong), transparent);
+    text-decoration-color: var(--mk);
+    text-decoration-thickness: 2.5px;
   }
   .prose-read .blk-text .m-hl[data-c="green"]:hover { --reading-cursor: url("/cursors/pen-green.svg") 3 3, pointer; }
   .prose-read .blk-text .m-hl[data-c="blue"]:hover { --reading-cursor: url("/cursors/pen-blue.svg") 3 3, pointer; }

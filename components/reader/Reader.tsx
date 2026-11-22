@@ -529,6 +529,7 @@ function ReaderInner({ article }: { article: Article }) {
         case "Escape":
           if (st.shortcutsOpen) setUI({ shortcutsOpen: false });
           else if (st.activeGloss) setUI({ activeGloss: null });
+          else if (st.activeHighlight) setUI({ activeHighlight: null });
           else if (st.notebookOpen) setUI({ notebookOpen: false });
           else if (st.focusMode) setUI({ focusMode: false });
           else if (st.cursor) setUI({ cursor: null });
