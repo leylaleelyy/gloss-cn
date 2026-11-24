@@ -10,6 +10,7 @@ import { ARTICLE_QUESTIONS } from "@/lib/actions";
 import { SAMPLE_QUESTIONS } from "@/lib/samples";
 import { fetchBrief } from "@/lib/ask";
 import { indexArticle } from "@/lib/doc";
+import { fetchText } from "@/lib/sync";
 import { flushStorePersistence, loadDoc, useGlosses, useHighlights, useStore, type Anchor } from "@/lib/store";
 import { applySettings } from "@/lib/settings";
 import { readingScrollBehavior } from "@/lib/reading-motion";
@@ -50,16 +51,24 @@ export function Reader({ id, initial }: { id: string; initial: Article | null })
   const hasArticle = Boolean(article);
   useEffect(() => {
     let cancelled = false;
+    const show = (a: Article) => { if (cancelled) return; setArticle(a); setMissing(false); };
     if (!initial && !hasArticle) {
-      // Text bodies stay on the device that imported them. Without the local
-      // document, this device shows the synced cards only.
-      void loadDoc(id).then((a) => {
-        if (cancelled) return;
-        if (a) { setArticle(a); setMissing(false); }
-        else setMissing(true);
+      // A short text is synced, so this device can still read it. A long book is
+      // not in the account and falls back to the synced cards and an upload.
+      void loadDoc(id).then(async (a) => {
+        if (a) { show(a); return; }
+        const remote = await fetchText(id);
+        if (remote) show(remote);
+        else if (!cancelled) setMissing(true);
       });
     }
-    return () => { cancelled = true; };
+    // A text that arrived, or was replaced, on another device while this page is open.
+    const onUpdated = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== id) return;
+      void fetchText(id).then((a) => { if (a) show(a); });
+    };
+    window.addEventListener("gloss:doc-updated", onUpdated);
+    return () => { cancelled = true; window.removeEventListener("gloss:doc-updated", onUpdated); };
   }, [id, initial, hasArticle]);
 
   // The text was read again (more carefully, or a page in the background): show the new reading in

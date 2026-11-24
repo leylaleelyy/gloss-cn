@@ -9,8 +9,9 @@
  *   entities in the baseline that are gone locally, sent as tombstones.
  * - Pull: rows changed since the last pull, merged in with applyRemote. The
  *   baseline then records them, so they are not pushed straight back.
- * - Texts travel separately: pushed once with the shelf entry, fetched on
- *   another device only when it is opened there.
+ * - Texts travel with their shelf entry when they are small enough to move
+ *   cheaply, and are fetched on another device only when opened there. A long
+ *   book stays on the device that imported it.
  *
  * The baseline lives in localStorage per user, so a second account on the
  * same browser starts fresh and receives what is on this device.
@@ -19,7 +20,8 @@
  * seconds, so what an agent saves arrives while you look.
  */
 
-import { flushDocMigrations, useStore, type RemoteChanges } from "./store";
+import { flushDocMigrations, forgetDoc, loadDoc, saveDoc, useStore, type RemoteChanges } from "./store";
+import type { Article } from "./article";
 import { forgetCover } from "./covers";
 import { setSyncStatus } from "./sync-status";
 import { applyRemoteLearning, hydrateLearning, useLearning } from "./learning-store";
@@ -28,15 +30,22 @@ import { applyRemoteSettings, localSyncedSettings } from "./settings-sync";
 import { clearArticleDeletions, pendingArticleDeletions } from "./sync-deletions";
 import { confirmSyncDeletions } from "./sync-guard";
 import { SYNCED_SETTING_KEYS } from "./settings";
+import { gzipSync } from "fflate";
 
 const COLLECTIONS = ["articles", "highlights", "glosses", "briefs", "progress", "vocabulary", "learning", "settings"] as const;
 type Collection = (typeof COLLECTIONS)[number];
 
 type Entity = { articleId: string; data: unknown; key: string };
 type Snapshot = { entities: Record<Collection, Map<string, Entity>>; busy: Set<string> };
-const BASELINE_VERSION = 6;
-type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1, docAt?: number]>> };
-type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown; images?: boolean };
+const BASELINE_VERSION = 7;
+/** `doc` is 1 when this account has the text, 2 when it is too long to travel, 0 while undecided. */
+type Baseline = { version: number; since: string | null; seen: Record<Collection, Record<string, [key: string, articleId: string, doc?: 0 | 1 | 2, docAt?: number]>> };
+type OutRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown };
+
+/** A text at or below this packed size still travels to the reader's other devices. */
+const MAX_SYNC_DOC = 700_000;
+/** Don't ask the Worker to inflate a whole novel either. */
+const MAX_SYNC_RAW = 4_000_000;
 
 /** Pushes are split to stay well under the 4.5MB request cap. */
 const BATCH_BYTES = 1_500_000;
@@ -44,6 +53,22 @@ const MAX_BODY = 15_000_000;
 /** A stalled request must not leave the badge on "Syncing" forever. */
 const PULL_TIMEOUT = 30_000;
 const PUSH_TIMEOUT = 120_000;
+
+/**
+ * A text long enough to compress rides as gzipped base64 so it fits one D1 row.
+ * Returns null when the text is too big to sync at all.
+ */
+function packDoc(doc: Article, docAt?: number): { doc: unknown; docAt: number } | null {
+  const text = JSON.stringify(doc);
+  if (text.length > MAX_SYNC_RAW) return null;
+  const at = docAt ?? Date.now();
+  if (text.length < MAX_SYNC_DOC) return { doc, docAt: at };
+  const bytes = gzipSync(new TextEncoder().encode(text));
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  const packed = { __gz: btoa(binary) };
+  return JSON.stringify(packed).length <= MAX_SYNC_DOC ? { doc: packed, docAt: at } : null;
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
@@ -164,17 +189,46 @@ export function startSync(userId: string) {
     try {
     const { entities, busy } = snapshot();
     const pendingDeletes = pendingArticleDeletions();
-    const rows: { c: Collection; row: OutRow; key: string | null; size: number }[] = [];
+    const rows: { c: Collection; row: OutRow; key: string | null; size: number; docState?: 0 | 1 | 2; docAt?: number }[] = [];
     for (const c of COLLECTIONS) {
       const seen = base.seen[c];
       for (const [id, e] of entities[c]) {
         const seenEntry = seen[id];
         const dataChanged = seenEntry?.[0] !== e.key;
         let row: OutRow | null = dataChanged ? { id, articleId: e.articleId, data: e.data } : null;
-        // Text bodies stay on the importing device. Only the shelf entry, marks,
-        // notes, progress and preferences travel between devices.
+        let docState: 0 | 1 | 2 | undefined = c === "articles" ? seenEntry?.[2] ?? 0 : undefined;
+        let docAt = c === "articles" ? seenEntry?.[3] : undefined;
+        // Names, marks, notes, progress and preferences always travel. A text
+        // also travels when it is small enough, so another device can read it;
+        // a longer one stays here and the other device offers an upload instead.
+        if (c === "articles" && (e.data as { origin?: string }).origin !== "sample") {
+          const item = e.data as { docAt?: number };
+          const textChanged = item.docAt !== seenEntry?.[3];
+          // Open the text only once, or after it was replaced here.
+          if (docState === 0 || textChanged) {
+            const doc = await loadDoc(id);
+            if (doc) {
+              const packed = packDoc(doc, item.docAt);
+              if (packed) {
+                row ??= { id, articleId: e.articleId, data: e.data };
+                row.data = { ...(e.data as Record<string, unknown>), docAt: packed.docAt };
+                row.doc = packed.doc;
+                docState = 1;
+                docAt = packed.docAt;
+              } else {
+                docState = 2;
+                docAt = item.docAt ?? seenEntry?.[3];
+              }
+            }
+            // No local copy (a shelf entry pulled from another device): leave
+            // the decision open; this device has nothing to upload.
+          }
+        }
+        // A decision alone still needs a row, so the baseline remembers it and
+        // a long book is not opened and measured on every push.
+        if (!row && c === "articles" && docState !== (seenEntry?.[2] ?? 0)) row = { id, articleId: e.articleId, data: e.data };
         if (!row) continue;
-        rows.push({ c, row, key: stableCached(row.data), size: JSON.stringify(row).length });
+        rows.push({ c, row, key: stableCached(row.data), size: JSON.stringify(row).length, docState, docAt });
       }
       for (const [id, [, articleId]] of Object.entries(seen)) {
         if (entities[c].has(id) || busy.has(`${c}:${id}`)) continue;
@@ -221,7 +275,13 @@ export function startSync(userId: string) {
       for (const r of batch) {
         if (r.key === null) delete base.seen[r.c][r.row.id];
         else {
-          base.seen[r.c][r.row.id] = [r.key, r.row.articleId];
+          base.seen[r.c][r.row.id] = [r.key, r.row.articleId, r.docState, r.docAt];
+        }
+        // The push stamped the shelf entry with a new `docAt`; keep this device's
+        // copy in step so the next push sees the same key and sends no text twice.
+        if (r.c === "articles" && r.docAt) {
+          const item = useStore.getState().library.find((x) => x.id === r.row.id);
+          if (item?.docAt !== r.docAt) useStore.getState().shelve(r.row.id, { docAt: r.docAt });
         }
       }
       clearArticleDeletions(batch.filter((r) => r.c === "articles" && r.row.deleted).map((r) => r.row.id));
@@ -252,6 +312,18 @@ export function startSync(userId: string) {
     if (!res.ok) throw new Error(`pull ${res.status}`);
     const { now, changes } = (await res.json()) as { now: string; changes: RemoteChanges };
 
+    // A text replaced on another device: drop this device's cached copy so the
+    // new one is fetched when it is opened (or right away, if it is open).
+    for (const r of changes.articles ?? []) {
+      if (r.deleted) continue;
+      const remoteDocAt = (r.data as { docAt?: number } | null)?.docAt;
+      const seenDocAt = base.seen.articles[r.id]?.[3];
+      const localDocAt = useStore.getState().library.find((item) => item.id === r.id)?.docAt;
+      if (remoteDocAt && seenDocAt !== undefined && remoteDocAt !== seenDocAt && remoteDocAt !== localDocAt) {
+        await forgetDoc(r.id);
+        window.dispatchEvent(new CustomEvent("gloss:doc-updated", { detail: r.id }));
+      }
+    }
     // Removed on another device: its painted cover goes from this one too.
     for (const r of changes.articles ?? []) if (r.deleted) void forgetCover(r.id);
     const changedRows = COLLECTIONS.reduce((n, c) => n + (changes[c]?.length ?? 0), 0);
@@ -265,7 +337,15 @@ export function startSync(userId: string) {
       for (const r of changes[c] ?? []) {
         const e = entities[c].get(r.id);
         if (r.deleted) delete base.seen[c][r.id];
-        else if (e) base.seen[c][r.id] = [e.key, e.articleId];
+        else if (!e) continue;
+        else if (c === "articles") {
+          const data = r.data as { docAt?: number; origin?: string } | null;
+          // `hasDoc` is the account's copy: a synced text, or a long one left behind.
+          const doc = r.hasDoc ? 1 : data?.origin === "sample" ? 0 : 2;
+          base.seen[c][r.id] = [e.key, e.articleId, doc, data?.docAt];
+        } else {
+          base.seen[c][r.id] = [e.key, e.articleId];
+        }
       }
     }
     base.since = now;
@@ -347,4 +427,20 @@ export function startSync(userId: string) {
       window.removeEventListener("gloss:sync-now", retry);
     },
   };
+}
+
+/**
+ * Fetch a text this device does not have yet from the reader's account, and
+ * keep it here. Long books are not in the account, so this returns null.
+ */
+export async function fetchText(id: string): Promise<Article | null> {
+  try {
+    const res = await fetchWithTimeout(`/api/articles/${encodeURIComponent(id)}`, { headers: googleAuthHeaders() }, PULL_TIMEOUT);
+    if (!res.ok) return null;
+    const { doc } = (await res.json()) as { doc: Article };
+    await saveDoc(doc);
+    return doc;
+  } catch {
+    return null;
+  }
 }

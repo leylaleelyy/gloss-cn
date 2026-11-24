@@ -67,6 +67,12 @@ the account. Device typography (size, face, measure, spacing), per-book layout
 and AI provider API keys stay on each device. The browser stays local-first; a
 small sync route mirrors changes.
 
+Short texts are small enough to sync in full, so an article or a very short
+book opens on any signed-in device (the text is fetched when it is first opened
+there). A long book keeps its full text on the device that imported it; its
+cards, notes and highlights still sync, and opening it elsewhere offers to
+upload the file.
+
 1. In Google Cloud Console create an **OAuth Client ID** for a Web application,
    and add the site origin to **Authorized JavaScript origins**:
    `https://gloss.leylalee.xyz` and, for local work, `http://localhost:3100`.

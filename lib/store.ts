@@ -464,10 +464,10 @@ export const useStore = create<State>((set, get) => ({
   },
 
   // Part of a text read again (a page swapped in by lib/upgrade.ts) where no mark is anchored:
-  // the marks stay. The rev bump makes sync send the text again.
+  // the marks stay. The rev and docAt bumps make sync send the text again.
   updateText: async (a, words) => {
     if (!(await saveDoc(a))) return false;
-    set((st) => ({ library: st.library.map((x) => (x.id === a.id ? { ...x, words, rev: (x.rev ?? 0) + 1 } : x)) }));
+    set((st) => ({ library: st.library.map((x) => (x.id === a.id ? { ...x, words, rev: (x.rev ?? 0) + 1, docAt: Date.now() } : x)) }));
     return true;
   },
 
@@ -478,7 +478,7 @@ export const useStore = create<State>((set, get) => ({
     set((st) => {
       const rest = <T,>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== a.id)) as Record<string, T>;
       return {
-        library: st.library.map((x) => (x.id === a.id ? { ...x, words, rev: (x.rev ?? 0) + 1 } : x)),
+        library: st.library.map((x) => (x.id === a.id ? { ...x, words, rev: (x.rev ?? 0) + 1, docAt: Date.now() } : x)),
         highlights: rest(st.highlights),
         glosses: rest(st.glosses),
         briefs: rest(st.briefs),

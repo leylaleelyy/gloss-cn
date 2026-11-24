@@ -38,7 +38,8 @@
     "test:word-wise-book": "node scripts/test-word-wise-book.mjs",
     "test:library-dedupe": "node scripts/test-library-dedupe.mjs",
     "test:sync-baseline": "node scripts/test-sync-baseline.mjs",
-    "test:sync-guard": "node scripts/test-sync-guard.mjs"
+    "test:sync-guard": "node scripts/test-sync-guard.mjs",
+    "test:sync-text": "node scripts/test-sync-text.mjs"
   },
   "dependencies": {
     "@llamaindex/liteparse-wasm": "2.15.1",
