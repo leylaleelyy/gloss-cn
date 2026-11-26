@@ -239,6 +239,103 @@ export async function tokenUser(hash: string): Promise<{ userId: string; label: 
   return { userId: String(row.user_id), label: String(row.label ?? "") };
 }
 
+/* ---------- browser sessions ---------- */
+
+export type SessionRecord = {
+  userId: string;
+  email: string;
+  name: string;
+  picture?: string;
+  lastSeenAt: string;
+  expiresAt: string;
+};
+
+let sessionsTableReady: Promise<void> | null = null;
+
+async function ensureSessionsTable(): Promise<void> {
+  if (!sessionsTableReady) {
+    const database = d1();
+    sessionsTableReady = database
+      .batch([
+        database.prepare(
+          `create table if not exists sessions (
+             hash text primary key,
+             user_id text not null,
+             email text not null,
+             name text not null,
+             picture text,
+             created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+             last_seen_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+             expires_at text not null
+           )`
+        ),
+        database.prepare("create index if not exists sessions_user on sessions (user_id)"),
+        database.prepare("create index if not exists sessions_expires on sessions (expires_at)"),
+      ])
+      .then(() => undefined)
+      .catch((error) => {
+        sessionsTableReady = null;
+        throw error;
+      });
+  }
+  await sessionsTableReady;
+}
+
+export async function createSession(
+  hash: string,
+  user: { userId: string; email: string; name: string; picture?: string },
+  expiresAt: string
+): Promise<void> {
+  await ensureSessionsTable();
+  const database = d1();
+  await database.batch([
+    database.prepare(`delete from sessions where expires_at <= ${NOW}`),
+    database
+      .prepare(
+        `insert into sessions (hash, user_id, email, name, picture, created_at, last_seen_at, expires_at)
+         values (?, ?, ?, ?, ?, ${NOW}, ${NOW}, ?)
+         on conflict (hash) do update set
+           user_id = excluded.user_id,
+           email = excluded.email,
+           name = excluded.name,
+           picture = excluded.picture,
+           last_seen_at = excluded.last_seen_at,
+           expires_at = excluded.expires_at`
+      )
+      .bind(hash, user.userId, user.email, user.name, user.picture ?? null, expiresAt),
+  ]);
+}
+
+export async function loadSession(hash: string): Promise<SessionRecord | null> {
+  await ensureSessionsTable();
+  const row = await d1()
+    .prepare(`select user_id, email, name, picture, last_seen_at, expires_at from sessions where hash = ? and expires_at > ${NOW}`)
+    .bind(hash)
+    .first<{ user_id: string; email: string; name: string; picture: string | null; last_seen_at: string; expires_at: string }>();
+  if (!row) return null;
+  return {
+    userId: String(row.user_id),
+    email: String(row.email),
+    name: String(row.name),
+    ...(row.picture ? { picture: String(row.picture) } : {}),
+    lastSeenAt: String(row.last_seen_at),
+    expiresAt: String(row.expires_at),
+  };
+}
+
+export async function touchSession(hash: string, expiresAt: string): Promise<void> {
+  await ensureSessionsTable();
+  await d1()
+    .prepare(`update sessions set last_seen_at = ${NOW}, expires_at = ? where hash = ? and expires_at > ${NOW}`)
+    .bind(expiresAt, hash)
+    .run();
+}
+
+export async function deleteSession(hash: string): Promise<void> {
+  await ensureSessionsTable();
+  await d1().prepare("delete from sessions where hash = ?").bind(hash).run();
+}
+
 /* ---------- the library, for an agent ---------- */
 
 export type ShelfRow = { id: string; data: Record<string, unknown>; pct: number };

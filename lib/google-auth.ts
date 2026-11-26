@@ -6,13 +6,39 @@ export type GoogleUser = { sub: string; email: string; name: string; picture?: s
 
 type State = {
   loaded: boolean;
+  sessionChecked: boolean;
   configured: boolean | null;
   credential: string | null;
   user: GoogleUser | null;
 };
 
 const KEY = "gloss:google-token";
+const USER_KEY = "gloss:session-user";
 const SEEN = "gloss:google-seen";
+
+function parseCachedUser(raw: string | null): GoogleUser | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<GoogleUser> & { expiresAt?: string };
+    if (!parsed || typeof parsed.sub !== "string" || typeof parsed.email !== "string") return null;
+    if (parsed.expiresAt && Date.parse(parsed.expiresAt) <= Date.now()) return null;
+    return {
+      sub: parsed.sub,
+      email: parsed.email,
+      name: typeof parsed.name === "string" && parsed.name ? parsed.name : parsed.email.split("@")[0],
+      ...(typeof parsed.picture === "string" && parsed.picture ? { picture: parsed.picture } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedUser(user: GoogleUser, expiresAt?: string) {
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify({ ...user, ...(expiresAt ? { expiresAt } : {}) }));
+    localStorage.setItem(SEEN, "1");
+  } catch {}
+}
 
 /** Decode a Google JWT's payload. The bytes are UTF-8, so names in any script survive. */
 export function decodeGoogleCredential(token: string): GoogleUser | null {
@@ -35,6 +61,11 @@ export function decodeGoogleCredential(token: string): GoogleUser | null {
 
 const initial = (): { credential: string | null; user: GoogleUser | null } => {
   try {
+    const cached = parseCachedUser(localStorage.getItem(USER_KEY));
+    if (cached) return { credential: null, user: cached };
+    localStorage.removeItem(USER_KEY);
+  } catch {}
+  try {
     const token = localStorage.getItem(KEY);
     if (!token) return { credential: null, user: null };
     const user = decodeGoogleCredential(token);
@@ -44,9 +75,15 @@ const initial = (): { credential: string | null; user: GoogleUser | null } => {
   return { credential: null, user: null };
 };
 
-export const useGoogleAuth = create<State>(() => ({ loaded: false, configured: null, credential: null, user: null }));
+export const useGoogleAuth = create<State>(() => ({
+  loaded: false,
+  sessionChecked: false,
+  configured: null,
+  credential: null,
+  user: null,
+}));
 
-/** Read the saved token once, after mount. */
+/** Read the saved session or legacy token once, after mount. */
 export function initGoogleAuth() {
   if (useGoogleAuth.getState().loaded) return;
   const saved = initial();
@@ -60,20 +97,123 @@ export function setGoogleConfigured(configured: boolean) {
 export function setGoogleCredential(credential: string) {
   const user = decodeGoogleCredential(credential);
   if (!user) return;
-  try { localStorage.setItem(KEY, credential); localStorage.setItem(SEEN, "1"); } catch {}
-  useGoogleAuth.setState({ loaded: true, credential, user });
+  try {
+    localStorage.removeItem(USER_KEY);
+    localStorage.setItem(KEY, credential);
+    localStorage.setItem(SEEN, "1");
+  } catch {}
+  useGoogleAuth.setState({ loaded: true, sessionChecked: true, credential, user });
+}
+
+/**
+ * Exchange a Google ID token for a 90-day HttpOnly session cookie.
+ * Falls back to keeping the Google ID token locally when session storage is unavailable.
+ */
+export async function exchangeGoogleCredential(credential: string): Promise<boolean> {
+  const decoded = decodeGoogleCredential(credential);
+  if (!decoded) return false;
+  try {
+    const res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { user?: GoogleUser; expiresAt?: string };
+      const user = data.user ?? decoded;
+      try { localStorage.removeItem(KEY); } catch {}
+      saveCachedUser(user, data.expiresAt);
+      useGoogleAuth.setState({ loaded: true, sessionChecked: true, credential: null, user });
+      return true;
+    }
+    if (res.status === 503) {
+      setGoogleCredential(credential);
+      return true;
+    }
+    return false;
+  } catch {
+    // Offline or transient network error: keep the verified JWT so the user isn't blocked.
+    setGoogleCredential(credential);
+    return true;
+  }
+}
+
+let sessionSyncInFlight: Promise<void> | null = null;
+
+/** Confirm and slide-refresh the server HttpOnly session cookie, upgrading any legacy JWT. */
+export function syncSession(): Promise<void> {
+  if (sessionSyncInFlight) return sessionSyncInFlight;
+  sessionSyncInFlight = (async () => {
+    if (!useGoogleAuth.getState().loaded) initGoogleAuth();
+    try {
+      const res = await fetch("/api/session", { cache: "no-store" });
+      if (!res.ok) {
+        useGoogleAuth.setState({ loaded: true, sessionChecked: true });
+        return;
+      }
+      const data = (await res.json()) as { user?: GoogleUser | null; expiresAt?: string };
+      if (data.user) {
+        try { localStorage.removeItem(KEY); } catch {}
+        saveCachedUser(data.user, data.expiresAt);
+        useGoogleAuth.setState({ loaded: true, sessionChecked: true, credential: null, user: data.user });
+        return;
+      }
+
+      // No server cookie yet. If a legacy 1-hour JWT is still valid locally, try to upgrade it.
+      const legacyToken = useGoogleAuth.getState().credential;
+      if (legacyToken && decodeGoogleCredential(legacyToken)) {
+        const upgraded = await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: legacyToken }),
+        }).catch(() => null);
+        if (upgraded?.ok) {
+          const upgradedData = (await upgraded.json()) as { user?: GoogleUser; expiresAt?: string };
+          if (upgradedData.user) {
+            try { localStorage.removeItem(KEY); } catch {}
+            saveCachedUser(upgradedData.user, upgradedData.expiresAt);
+            useGoogleAuth.setState({ loaded: true, sessionChecked: true, credential: null, user: upgradedData.user });
+            return;
+          }
+        }
+        useGoogleAuth.setState({ loaded: true, sessionChecked: true });
+        return;
+      }
+
+      // Server confirmed no active session; clear stale cached session profile.
+      try {
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(KEY);
+      } catch {}
+      useGoogleAuth.setState({ loaded: true, sessionChecked: true, credential: null, user: null });
+    } catch {
+      // Offline: preserve the cached user profile until the network returns.
+      useGoogleAuth.setState({ loaded: true, sessionChecked: true });
+    } finally {
+      sessionSyncInFlight = null;
+    }
+  })();
+  return sessionSyncInFlight;
 }
 
 export function signOutGoogle() {
-  try { localStorage.removeItem(KEY); localStorage.removeItem(SEEN); } catch {}
-  useGoogleAuth.setState({ credential: null, user: null, loaded: true });
+  try {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(SEEN);
+  } catch {}
+  useGoogleAuth.setState({ credential: null, user: null, loaded: true, sessionChecked: true });
+  void fetch("/api/session", { method: "DELETE" }).catch(() => {});
   try { window.google?.accounts.id.disableAutoSelect(); } catch {}
 }
 
-/** An expired 1-hour JWT drops the credential while keeping SEEN, so One Tap can silently refresh it. */
+/** An expired session or JWT drops local state while keeping SEEN, so One Tap can silently refresh it. */
 export function expireGoogleCredential() {
-  try { localStorage.removeItem(KEY); } catch {}
-  useGoogleAuth.setState({ credential: null, user: null, loaded: true });
+  try {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(USER_KEY);
+  } catch {}
+  useGoogleAuth.setState({ credential: null, user: null, loaded: true, sessionChecked: true });
   promptGoogleRefresh();
 }
 

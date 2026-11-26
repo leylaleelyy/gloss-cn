@@ -598,7 +598,7 @@ function ReaderInner({ article }: { article: Article }) {
       <div className={`${focusMode ? "focus-mode" : ""} ${showNumbers ? "" : "hide-nums"} ${notebookOpen ? "nb-open" : ""}`}>
         <TopBar currentN={current ? ix.numbers.get(current) ?? null : null} pastTitle={pastTitle} listenFrom={askAnchor} />
 
-        <main className="relative z-[1] px-4 pb-10 pt-[calc(var(--topbar-h)+64px)] sm:px-6">
+        <main className="relative z-[1] px-4 pb-[calc(env(safe-area-inset-bottom)+8rem)] pt-[calc(var(--topbar-h)+64px)] sm:px-6 sm:pb-[calc(env(safe-area-inset-bottom)+9rem)]">
           <div className="reader-grid" data-left-collapsed={!showRail}>
             <div className="rg-rail relative z-30">
               <div className="sticky top-[calc(var(--topbar-h)+28px)] flex h-[calc(100dvh-var(--topbar-h)-64px)] flex-col gap-3">{withRail && showRail && <Contents align="left" />}{withRail && showRail && <div className="min-h-0 flex-1"><Rail articleEl={articleEl} /></div>}</div>
@@ -671,14 +671,14 @@ function ReaderInner({ article }: { article: Article }) {
                   </Link>
                 </div>
               </footer>
-
-              <Composer ref={composerRef} currentBlock={askAnchor} suggestions={SAMPLE_QUESTIONS[article.id] ?? ARTICLE_QUESTIONS} />
             </div>
 
             <div className="rg-gutter" aria-hidden />
             <div className="rg-margin min-w-0">{wide && <Margin glosses={glosses} notes={notes} articleEl={articleEl} gutter={gutter} onOpenNote={openNote} />}</div>
           </div>
         </main>
+
+        <Composer ref={composerRef} currentBlock={askAnchor} suggestions={SAMPLE_QUESTIONS[article.id] ?? ARTICLE_QUESTIONS} />
 
         {focusMode && (
           <p

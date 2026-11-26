@@ -155,3 +155,18 @@ create table if not exists assets (
   updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   primary key (user_id, article_id, id)
 );
+
+-- Long-lived browser sessions exchanged from a Google ID token at sign-in.
+-- Only the token hash is stored; the opaque token lives in an HttpOnly cookie.
+create table if not exists sessions (
+  hash text primary key,
+  user_id text not null,
+  email text not null,
+  name text not null,
+  picture text,
+  created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  last_seen_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  expires_at text not null
+);
+create index if not exists sessions_user on sessions (user_id);
+create index if not exists sessions_expires on sessions (expires_at);

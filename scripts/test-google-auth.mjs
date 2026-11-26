@@ -27,3 +27,14 @@ const chinese = await token({ ...base, name: '张伟' });
 assert.equal(decodeGoogleCredential(chinese)?.name, '张伟', 'UTF-8 Google names decode correctly');
 console.log('PASS: Google ID token signature, audience, expiry and key checks');
 console.log('PASS: Google names in Chinese decode without mojibake');
+
+const session = await import('../lib/session.ts');
+const issued = session.makeSessionToken();
+assert.ok(session.looksLikeSessionToken(issued.token), 'session token format is recognized');
+assert.equal(session.hashSessionToken(issued.token), issued.hash, 'session token hash is deterministic');
+assert.ok(Date.parse(issued.expiresAt) - Date.now() > 89 * 86_400_000, 'session lives for 90 days');
+assert.equal(session.sessionCookieOptions(true).maxAge, 90 * 24 * 60 * 60, 'cookie maxAge matches 90-day session');
+assert.equal(session.sessionCookieOptions(true).httpOnly, true, 'session cookie is HttpOnly');
+assert.equal(session.isSecureRequest(new Request('https://gloss.leylalee.xyz/api/session')), true);
+assert.equal(session.isSecureRequest(new Request('http://localhost:3100/api/session')), false);
+console.log('PASS: 90-day session token, hash and cookie options');

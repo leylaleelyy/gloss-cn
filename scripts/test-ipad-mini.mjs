@@ -33,6 +33,12 @@ for(const [width,height] of (process.argv.includes('--keyboard-only') ? [] : [[7
   assert.ok(Math.abs(margins.left-margins.right)<2,'Portrait reading margins must match: '+JSON.stringify(margins));
   assert.ok(margins.left>=16&&margins.right>=16);
  }
+ await evaluate('window.scrollTo(0,900)');await sleep(120);
+ const docked=await evaluate(`(()=>{const dock=document.querySelector('.composer'), form=document.querySelector('.composer form'), prose=document.querySelector('.prose-read');const fr=form.getBoundingClientRect(), pr=prose.getBoundingClientRect();return {pos:getComputedStyle(dock).position,bottomGap:innerHeight-fr.bottom,centerDelta:Math.abs((fr.left+fr.right)/2-(pr.left+pr.right)/2),scrollY:window.scrollY}})()`);
+ assert.equal(docked.pos,'fixed','Composer must stay fixed at viewport bottom across resizes/rotations: '+JSON.stringify({width,height,docked}));
+ assert.ok(docked.bottomGap>=12&&docked.bottomGap<=32,'Composer must stay pinned to bottom while scrolled: '+JSON.stringify({width,height,docked}));
+ assert.ok(docked.centerDelta<=2,'Composer must stay centered over the reading column: '+JSON.stringify({width,height,docked}));
+ await evaluate('window.scrollTo(0,0)');await sleep(100);
  await evaluate(`document.querySelector('button[aria-label="Appearance and answers"]').click()`);
  await until(`!!document.querySelector('[role="dialog"][aria-label="Appearance and answers"]')`);
  await evaluate(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent==='Look').click()`);await sleep(100);

@@ -3,8 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { accountsEnabled } from "@/lib/accounts";
-import { googleSeen, initGoogleAuth, promptGoogleRefresh, setGoogleConfigured, setGoogleCredential, useGoogleAuth } from "@/lib/google-auth";
+import { exchangeGoogleCredential, googleSeen, initGoogleAuth, promptGoogleRefresh, setGoogleConfigured, syncSession, useGoogleAuth } from "@/lib/google-auth";
 import { useI18n } from "@/lib/ui-lang";
+
+const SESSION_RECHECK_MS = 6 * 60 * 60 * 1000;
 
 /** Loads Google Identity Services and owns the one sign-in dialog. */
 export function GoogleProvider({ children }: { children: ReactNode }) {
@@ -14,14 +16,24 @@ export function GoogleProvider({ children }: { children: ReactNode }) {
   const [clientId, setClientId] = useState<string | null>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
-  const { user, loaded } = useGoogleAuth();
+  const lastSessionCheck = useRef(0);
+  const { user, loaded, sessionChecked } = useGoogleAuth();
   const { t } = useI18n();
 
   useEffect(() => {
     initGoogleAuth();
     if (!accountsEnabled) return;
+    lastSessionCheck.current = Date.now();
+    void syncSession();
     const show = () => setOpen(true);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastSessionCheck.current < SESSION_RECHECK_MS) return;
+      lastSessionCheck.current = Date.now();
+      void syncSession();
+    };
     window.addEventListener("gloss:google-signin", show);
+    document.addEventListener("visibilitychange", onVisible);
     fetch("/api/config")
       .then((response) => response.json())
       .then((data: { googleClientId?: string }) => {
@@ -33,7 +45,10 @@ export function GoogleProvider({ children }: { children: ReactNode }) {
         setClientId("");
         setGoogleConfigured(false);
       });
-    return () => window.removeEventListener("gloss:google-signin", show);
+    return () => {
+      window.removeEventListener("gloss:google-signin", show);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   useEffect(() => {
@@ -45,8 +60,13 @@ export function GoogleProvider({ children }: { children: ReactNode }) {
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: (response: { credential?: string }) => {
-          if (response.credential) setGoogleCredential(response.credential);
-          setOpen(false);
+          if (response.credential) {
+            void exchangeGoogleCredential(response.credential).then((ok) => {
+              if (ok) setOpen(false);
+            });
+          } else {
+            setOpen(false);
+          }
         },
         auto_select: true,
         cancel_on_tap_outside: true,
@@ -74,12 +94,12 @@ export function GoogleProvider({ children }: { children: ReactNode }) {
     };
   }, [clientId]);
 
-  // A returning reader can be signed back in silently (or with One Tap) when Google's session is alive.
+  // Only fall back to Google One Tap after the server confirms no active long-lived session.
   useEffect(() => {
-    if (!ready || !clientId || user || !googleSeen()) return;
+    if (!ready || !clientId || !sessionChecked || user || !googleSeen()) return;
     const timer = setTimeout(promptGoogleRefresh, 700);
     return () => clearTimeout(timer);
-  }, [ready, clientId, user]);
+  }, [ready, clientId, sessionChecked, user]);
 
   // Draw Google's own button only while the dialog is visible.
   useLayoutEffect(() => {
