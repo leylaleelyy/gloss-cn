@@ -2121,17 +2121,21 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
 [data-face="arphic"] .prose-read .blk[data-type="h2"],
 [data-face="arphic"] .prose-read .blk[data-type="h3"] { font-family: inherit; }
 
-/* Tablet landscape keeps a navigation rail without squeezing text for margin cards. */
-@media (min-width: 900px) and (max-width: 1259px) and (orientation: landscape) {
-  .reader-grid { grid-template-columns: 28px 40px minmax(0, var(--m)); }
-  .reader-grid > .rg-rail { display: block; }
-  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: none; }
+/* Cards take priority when tablet width cannot fit both sidebars. */
+@media (min-width: 960px) {
+  .reader-grid { grid-template-columns: 52px minmax(0, var(--m)) 24px 280px; }
+  .reader-grid > .rg-rail { display: none; }
+  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: block; }
 }
-@media (pointer: coarse) and (min-width: 900px) and (max-width: 1439px) and (orientation: landscape) {
-  .reader-grid { grid-template-columns: 28px 40px minmax(0, var(--m)); }
-  .reader-grid > .rg-rail { display: block; }
-  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: none; }
+@media (min-width: 1260px) {
+  .reader-grid:not([data-left-collapsed="true"]) { grid-template-columns: 28px 56px minmax(0, var(--m)) 32px 300px; }
+  .reader-grid:not([data-left-collapsed="true"]) > .rg-rail { display: block; }
 }
+
+@media (min-width: 1260px) {
+  .reader-grid[data-left-collapsed="true"] { grid-template-columns: 52px minmax(0, var(--m)) 32px 300px; }
+}
+
 @media (pointer: coarse) {
   .reader-tools button, .reader-tools > a { min-height: 44px; min-width: 44px; }
   .reader-tools a span { display: none; }
@@ -2142,6 +2146,13 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .pop[role="dialog"] { max-height: calc(100dvh - 88px); overflow-y: auto; overscroll-behavior: contain; }
 }
 
+/* Narrow touch screens and iPad Split View: keep every reader tool reachable without clipping. */
+@media (max-width: 639px) {
+  .reader-tools { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .reader-tools::-webkit-scrollbar { display: none; }
+  .reader-tools button, .reader-tools > a { min-width: 36px; padding-inline: 6px; }
+}
+
 /* Keep native selection handles while preferring Gloss actions over long-press callouts. */
 @media (any-pointer: coarse) {
   .prose-read .blk-text { -webkit-touch-callout: none; -webkit-user-select: text; user-select: text; }
@@ -2149,21 +2160,6 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .selection-actions { flex-wrap: wrap; justify-content: center; max-width: min(560px, calc(100vw - 24px)); }
   .selection-actions .lens-btn { min-height: 44px; }
   .lens-caret { animation: none; }
-}
-
-/* Cards take priority when tablet width cannot fit both sidebars. */
-@media (min-width: 960px) {
-  .reader-grid { grid-template-columns: 24px minmax(0, var(--m)) 24px 280px; }
-  .reader-grid > .rg-rail { display: none; }
-  .reader-grid > .rg-gutter, .reader-grid > .rg-margin { display: block; }
-}
-@media (min-width: 1260px) {
-  .reader-grid:not([data-left-collapsed="true"]) { grid-template-columns: 28px 40px minmax(0, var(--m)) 32px 300px; }
-  .reader-grid:not([data-left-collapsed="true"]) > .rg-rail { display: block; }
-}
-
-@media (min-width: 1260px) {
-  .reader-grid[data-left-collapsed="true"] { grid-template-columns: 24px minmax(0, var(--m)) 32px 300px; }
 }
 
 /* Paint-only word markers: async definitions never change text metrics. */
@@ -2238,6 +2234,25 @@ html[data-desktop="true"] .no-scrollbar::-webkit-scrollbar { display: none; }
   .reader-grid > .rg-gutter,
   .reader-grid > .rg-margin { display: none; }
   .prose-read .pnum { display: none; }
+  .note-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 0 0.12em 3px;
+    border-radius: 99px;
+    background: var(--rubric);
+    vertical-align: middle;
+  }
+}
+
+/* Focus mode must override the unlayered responsive grid rules above. */
+.focus-mode .reader-grid,
+.focus-mode .reader-grid:not([data-left-collapsed="true"]),
+.focus-mode .reader-grid[data-left-collapsed="true"] {
+  grid-template-columns: minmax(0, var(--m));
+}
+.focus-mode .reader-grid > :is(.rg-rail, .rg-numgap, .rg-gutter, .rg-margin) {
+  display: none;
 }
 
 /* Answer cards keep Markdown structure without article-sized typography. */

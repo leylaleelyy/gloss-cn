@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 const MAX_BODY = 15_000_000;
 const MAX_ROWS = 2000;
 const MAX_DATA = 256_000;
+const MAX_DOC = 950_000;
 
 type InRow = { id: string; articleId: string; data: unknown; deleted?: boolean; doc?: unknown };
 
@@ -31,7 +32,9 @@ export async function POST(req: Request) {
 
   let body: { changes?: Record<string, InRow[]>; confirm?: boolean };
   try {
-    body = await req.json();
+    const rawText = await req.text();
+    if (rawText.length > MAX_BODY) return Response.json({ error: "Too large." }, { status: 413 });
+    body = JSON.parse(rawText) as { changes?: Record<string, InRow[]>; confirm?: boolean };
   } catch {
     return Response.json({ error: "Body must be JSON." }, { status: 400 });
   }
@@ -67,5 +70,6 @@ function valid(r: InRow): boolean {
   if (!r || typeof r.id !== "string" || typeof r.articleId !== "string") return false;
   if (!r.id || r.id.length > 120 || !r.articleId || r.articleId.length > 120) return false;
   if (r.deleted) return true;
+  if (r.doc !== undefined && r.doc !== null && JSON.stringify(r.doc).length > MAX_DOC) return false;
   return typeof r.data === "object" && r.data !== null && JSON.stringify(r.data).length <= MAX_DATA;
 }

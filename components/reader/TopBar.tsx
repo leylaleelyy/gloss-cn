@@ -12,7 +12,7 @@ import { ListenButton } from "./Listen";
 import { SettingsMenu } from "@/components/ui/SettingsMenu";
 import { barBtn } from "@/components/ui/Popover";
 import { useGlosses, useHighlights, useStore } from "@/lib/store";
-import { useReader } from "./context";
+import { useMedia, useReader } from "./context";
 import { readingScrollBehavior } from "@/lib/reading-motion";
 import { useI18n } from "@/lib/ui-lang";
 import { LanguageMenu } from "@/components/ui/LanguageMenu";
@@ -27,6 +27,7 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
   const focusMode = useStore((s) => s.focusMode);
   const barRef = useRef<HTMLSpanElement>(null);
   const showRail = useStore(s => s.settings.rail);
+  const withRail = useMedia("(min-width: 1260px) and (orientation: landscape)", false);
   const setSettings = useStore(s => s.setSettings);
   const notebookOpen = useStore((s) => s.notebookOpen);
   const setUI = useStore((s) => s.setUI);
@@ -128,12 +129,14 @@ export function TopBar({ currentN, pastTitle, listenFrom }: { currentN: number |
           </div>
         </div>
 
-        <nav aria-label="Reader tools" className="reader-tools flex items-center gap-1">
-          <button type="button" className={`${barBtn} !hidden min-[1260px]:!inline-flex`}
-            aria-label={showRail ? t("topbar.hideSidebar") : t("topbar.showSidebar")} aria-pressed={showRail}
-            data-tip={showRail ? t("topbar.hideSidebar") : t("topbar.showSidebar")} onClick={() => setSettings({ rail: !showRail })}>
-            {showRail ? <PanelLeftClose size={18} strokeWidth={1.8} /> : <PanelLeftOpen size={18} strokeWidth={1.8} />}<span className="toolbar-label">{t("topbar.sidebar")}</span>
-          </button>
+        <nav aria-label="Reader tools" className="reader-tools flex min-w-0 items-center gap-1">
+          {withRail && (
+            <button type="button" className={barBtn}
+              aria-label={showRail ? t("topbar.hideSidebar") : t("topbar.showSidebar")} aria-pressed={showRail}
+              data-tip={showRail ? t("topbar.hideSidebar") : t("topbar.showSidebar")} onClick={() => setSettings({ rail: !showRail })}>
+              {showRail ? <PanelLeftClose size={18} strokeWidth={1.8} /> : <PanelLeftOpen size={18} strokeWidth={1.8} />}<span className="toolbar-label">{t("topbar.sidebar")}</span>
+            </button>
+          )}
           <Contents /><WordWiseControl />
           <span className="hidden sm:block">
             <button type="button" className={barBtn} onClick={() => setUI({ shortcutsOpen: true })} aria-label={t("topbar.shortcuts")} data-tip={t("topbar.shortcuts")} data-tip-kbd="?">

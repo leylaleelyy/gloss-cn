@@ -22,12 +22,17 @@ function idb(): Promise<IDBDatabase> {
   return (opening ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const conn = req.result;
+      conn.onclose = () => { opening = null; };
+      conn.onversionchange = () => { conn.close(); opening = null; };
+      resolve(conn);
+    };
+    req.onerror = () => { opening = null; reject(req.error); };
   }));
 }
 
-async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, retry = true): Promise<T | null> {
   try {
     const db = await idb();
     return await new Promise<T>((resolve, reject) => {
@@ -35,7 +40,11 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
       r.onsuccess = () => resolve(r.result);
       r.onerror = () => reject(r.error);
     });
-  } catch {
+  } catch (err) {
+    if (retry && err instanceof DOMException && err.name === "InvalidStateError") {
+      opening = null;
+      return tx(mode, fn, false);
+    }
     return null;
   }
 }
@@ -64,7 +73,18 @@ export async function paintedUrl(id: string): Promise<string | null> {
   return url;
 }
 
-export const forgetCover = (id: string) => tx("readwrite", (s) => s.delete(id));
+function revokeCoverUrl(id: string) {
+  const old = urls.get(id);
+  if (old) {
+    URL.revokeObjectURL(old);
+    urls.delete(id);
+  }
+}
+
+export const forgetCover = (id: string) => {
+  revokeCoverUrl(id);
+  return tx("readwrite", (s) => s.delete(id));
+};
 
 /** Paint one text's cover. "rest" means the free allowance is spent, so the queue should stop. */
 export async function paint(item: LibraryItem): Promise<"ok" | "rest" | "error"> {
@@ -79,7 +99,7 @@ export async function paint(item: LibraryItem): Promise<"ok" | "rest" | "error">
     if (!res.ok) return "error";
     const blob = await res.blob();
     await tx("readwrite", (s) => s.put(blob, item.id));
-    urls.delete(item.id);
+    revokeCoverUrl(item.id);
     useStore.getState().shelve(item.id, { cover: "painted" });
     return "ok";
   } catch {

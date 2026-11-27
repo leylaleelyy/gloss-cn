@@ -3,20 +3,37 @@ import { create } from "zustand";
 import { DEFAULT_LEARNING, learningPreferences, normalizeWord, type LearningPreferences, type Definition, type WordSource, type VocabularyEntry } from "./learning";
 const KEY = "gloss:learning-settings";
 let opening: Promise<IDBDatabase> | undefined;
+function resetDb() {
+  opening = undefined;
+}
 function db() {
   return opening ??= new Promise<IDBDatabase>((resolve, reject) => {
     const r = indexedDB.open("gloss-learning", 1);
     r.onupgradeneeded = () => r.result.createObjectStore("vocabulary", { keyPath: "id" });
-    r.onsuccess = () => resolve(r.result); r.onerror = () => { opening = undefined; reject(r.error); };
+    r.onsuccess = () => {
+      const conn = r.result;
+      conn.onclose = resetDb;
+      conn.onversionchange = () => { conn.close(); resetDb(); };
+      resolve(conn);
+    };
+    r.onerror = () => { resetDb(); reject(r.error); };
   });
 }
-async function write(value: VocabularyEntry | string) {
-  const d = await db();
-  await new Promise<void>((resolve, reject) => {
-    const t = d.transaction("vocabulary", "readwrite"), s = t.objectStore("vocabulary");
-    if (typeof value === "string") s.delete(value); else s.put(value);
-    t.oncomplete = () => resolve(); t.onerror = () => reject(t.error); t.onabort = () => reject(t.error);
-  });
+async function write(value: VocabularyEntry | string, retry = true): Promise<void> {
+  try {
+    const d = await db();
+    await new Promise<void>((resolve, reject) => {
+      const t = d.transaction("vocabulary", "readwrite"), s = t.objectStore("vocabulary");
+      if (typeof value === "string") s.delete(value); else s.put(value);
+      t.oncomplete = () => resolve(); t.onerror = () => reject(t.error); t.onabort = () => reject(t.error);
+    });
+  } catch (err) {
+    if (retry && err instanceof DOMException && err.name === "InvalidStateError") {
+      resetDb();
+      return write(value, false);
+    }
+    throw err;
+  }
 }
 let hydration: Promise<void> | undefined;
 export const useLearning = create<{ entries: VocabularyEntry[]; preferences: LearningPreferences; ready: boolean; error: string }>(() => ({ entries: [], preferences: DEFAULT_LEARNING, ready: false, error: "" }));

@@ -17,9 +17,9 @@ export async function POST(req: Request) {
   const id = typeof body.id === "string" ? body.id.slice(0, 120) : "";
   const mime = typeof body.mime === "string" && /^image\/(png|jpeg|webp|gif)$/.test(body.mime) ? body.mime : "";
   const data = typeof body.data === "string" ? body.data : "";
-  if (!articleId || !id || !mime || !data || data.length > 4_000_000 || !/^[A-Za-z0-9+/=]+$/.test(data)) return Response.json({ error: "Invalid picture." }, { status: 400 });
+  if (!articleId || !id || !mime || !data || data.length > 1_800_000 || !/^[A-Za-z0-9+/=]+$/.test(data)) return Response.json({ error: "Invalid picture." }, { status: 400 });
   try {
-    await saveAsset(userId, articleId, id, mime, Buffer.from(data, "base64"));
+    await saveAsset(userId, articleId, id, mime, data);
   } catch {
     return Response.json({ error: "Could not store that picture." }, { status: 500 });
   }

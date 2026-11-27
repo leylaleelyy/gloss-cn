@@ -117,7 +117,9 @@ export async function handle(req: Request, pathToken?: string): Promise<Response
   // Clients on the 2025-03-26 protocol may send a batch: an array of messages, answered with an array.
   const batch = Array.isArray(body);
   const msgs = (batch ? body : [body]) as Rpc[];
-  if (!msgs.length || msgs.some((m) => typeof m !== "object" || !m)) return fail(null, -32600, "Send a JSON-RPC message, or an array of them.", 400);
+  if (!msgs.length || msgs.length > 10 || msgs.some((m) => typeof m !== "object" || !m)) {
+    return fail(null, -32600, "Send a JSON-RPC message, or a batch of at most 10 messages.", 400);
+  }
   const first = msgs[0];
   console.info("mcp:", msgs.map((m) => m.method).join(", "), first.method === "initialize" ? JSON.stringify({ v: first.params?.protocolVersion, client: first.params?.clientInfo }) : "");
 

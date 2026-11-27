@@ -12,6 +12,7 @@ import type { ModelKey, StreamEvent, Usage } from "./models";
 import { MODELS, modelOf } from "./models";
 
 import { readProvider } from "./provider-config";
+import { googleAuthHeaders } from "./google-auth";
 import { shrinkImageForVision } from "./vision-image";
 
 export function readApiKey(): string { return readProvider().apiKey; }
@@ -273,7 +274,12 @@ export function openKeyMenu() {
 
 export async function validateKey(key: string): Promise<boolean> {
   try {
-    const res = await fetch("/api/key", { method: "POST", headers: { "Content-Type": "application/json", ...providerHeaders() }, body: JSON.stringify({ apiKey: key }) });
+    const provider = readProvider();
+    const res = await fetch("/api/key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...providerHeaders() },
+      body: JSON.stringify({ ...provider, apiKey: key }),
+    });
     return ((await res.json()) as { ok?: boolean }).ok === true;
   } catch {
     return false;
@@ -326,6 +332,22 @@ export async function streamAsk(
   }
 }
 
+async function resolveBlockImageSrc(src: string, signal: AbortSignal): Promise<string> {
+  if (!src.startsWith("gloss-asset:")) return src;
+  const parts = src.slice("gloss-asset:".length).split(":");
+  if (parts.length < 2) throw new Error("图片已不可用，请重新打开文章。");
+  const res = await fetch(`/api/assets/${encodeURIComponent(parts[0])}/${encodeURIComponent(parts.slice(1).join(":"))}`, {
+    headers: googleAuthHeaders(),
+    signal,
+  });
+  if (!res.ok) throw new Error("无法读取同步的书中图片，请确认已登录。");
+  const blob = await res.blob();
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return `data:${blob.type || "image/jpeg"};base64,${btoa(binary)}`;
+}
+
 /** Visual answers use the same persistent card, stop, retry and follow-up controls. */
 async function explainImage(ix: DocIndex, gloss: Gloss) {
   const controller = new AbortController();
@@ -338,7 +360,8 @@ async function explainImage(ix: DocIndex, gloss: Gloss) {
     const block = ix.article.blocks[index];
     if (!block?.src) throw new Error("图片已不可用，请重新打开文章。");
     const context = ix.article.blocks.slice(Math.max(0,index-2),index+3).map(b => b.runs.map(r=>r.text).join("")).join("\n").slice(0,5000);
-    const image = await shrinkImageForVision(block.src);
+    const resolvedSrc = await resolveBlockImageSrc(block.src, controller.signal);
+    const image = await shrinkImageForVision(resolvedSrc);
     const response = await fetch("/api/image-explain", {
       method:"POST", signal:controller.signal,
       headers:{"Content-Type":"application/json",...providerHeaders()},

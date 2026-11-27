@@ -107,9 +107,13 @@ export async function* streamChat(req: {
     buffer = frames.pop() ?? "";
 
     for (const frame of frames) {
-      const line = frame.trim();
-      if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
+      const dataLines: string[] = [];
+      for (const rawLine of frame.split(/\r?\n/)) {
+        if (rawLine.startsWith("data:")) dataLines.push(rawLine.slice(5).trimStart());
+      }
+      if (!dataLines.length) continue;
+      const payload = dataLines.join("\n").trim();
+      if (!payload) continue;
       if (payload === "[DONE]") {
         yield finish();
         return;

@@ -94,9 +94,12 @@ export function setGoogleConfigured(configured: boolean) {
   useGoogleAuth.setState({ configured });
 }
 
+let authEpoch = 0;
+
 export function setGoogleCredential(credential: string) {
   const user = decodeGoogleCredential(credential);
   if (!user) return;
+  authEpoch++;
   try {
     localStorage.removeItem(USER_KEY);
     localStorage.setItem(KEY, credential);
@@ -112,14 +115,17 @@ export function setGoogleCredential(credential: string) {
 export async function exchangeGoogleCredential(credential: string): Promise<boolean> {
   const decoded = decodeGoogleCredential(credential);
   if (!decoded) return false;
+  const epoch = ++authEpoch;
   try {
     const res = await fetch("/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credential }),
     });
+    if (epoch !== authEpoch) return false;
     if (res.ok) {
       const data = (await res.json()) as { user?: GoogleUser; expiresAt?: string };
+      if (epoch !== authEpoch) return false;
       const user = data.user ?? decoded;
       try { localStorage.removeItem(KEY); } catch {}
       saveCachedUser(user, data.expiresAt);
@@ -132,6 +138,7 @@ export async function exchangeGoogleCredential(credential: string): Promise<bool
     }
     return false;
   } catch {
+    if (epoch !== authEpoch) return false;
     // Offline or transient network error: keep the verified JWT so the user isn't blocked.
     setGoogleCredential(credential);
     return true;
@@ -143,15 +150,18 @@ let sessionSyncInFlight: Promise<void> | null = null;
 /** Confirm and slide-refresh the server HttpOnly session cookie, upgrading any legacy JWT. */
 export function syncSession(): Promise<void> {
   if (sessionSyncInFlight) return sessionSyncInFlight;
+  const epoch = authEpoch;
   sessionSyncInFlight = (async () => {
     if (!useGoogleAuth.getState().loaded) initGoogleAuth();
     try {
       const res = await fetch("/api/session", { cache: "no-store" });
+      if (epoch !== authEpoch) return;
       if (!res.ok) {
         useGoogleAuth.setState({ loaded: true, sessionChecked: true });
         return;
       }
       const data = (await res.json()) as { user?: GoogleUser | null; expiresAt?: string };
+      if (epoch !== authEpoch) return;
       if (data.user) {
         try { localStorage.removeItem(KEY); } catch {}
         saveCachedUser(data.user, data.expiresAt);
@@ -167,8 +177,10 @@ export function syncSession(): Promise<void> {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ credential: legacyToken }),
         }).catch(() => null);
+        if (epoch !== authEpoch) return;
         if (upgraded?.ok) {
           const upgradedData = (await upgraded.json()) as { user?: GoogleUser; expiresAt?: string };
+          if (epoch !== authEpoch) return;
           if (upgradedData.user) {
             try { localStorage.removeItem(KEY); } catch {}
             saveCachedUser(upgradedData.user, upgradedData.expiresAt);
@@ -187,6 +199,7 @@ export function syncSession(): Promise<void> {
       } catch {}
       useGoogleAuth.setState({ loaded: true, sessionChecked: true, credential: null, user: null });
     } catch {
+      if (epoch !== authEpoch) return;
       // Offline: preserve the cached user profile until the network returns.
       useGoogleAuth.setState({ loaded: true, sessionChecked: true });
     } finally {
@@ -197,6 +210,7 @@ export function syncSession(): Promise<void> {
 }
 
 export function signOutGoogle() {
+  authEpoch++;
   try {
     localStorage.removeItem(KEY);
     localStorage.removeItem(USER_KEY);
@@ -209,6 +223,7 @@ export function signOutGoogle() {
 
 /** An expired session or JWT drops local state while keeping SEEN, so One Tap can silently refresh it. */
 export function expireGoogleCredential() {
+  authEpoch++;
   try {
     localStorage.removeItem(KEY);
     localStorage.removeItem(USER_KEY);

@@ -7,7 +7,7 @@
  */
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { gunzipSync } from "fflate";
+import { gunzipSync, gzipSync } from "fflate";
 
 type D1Result<T> = { results?: T[]; success?: boolean; meta?: { changes?: number } };
 type D1Statement = {
@@ -172,13 +172,14 @@ export async function articleDoc(userId: string, id: string): Promise<unknown | 
 
 /* ---------- book pictures ---------- */
 
-export async function saveAsset(userId: string, articleId: string, id: string, mime: string, data: Uint8Array): Promise<void> {
+export async function saveAsset(userId: string, articleId: string, id: string, mime: string, data: Uint8Array | string): Promise<void> {
+  const encoded = typeof data === "string" ? data : bytesToBase64(data);
   await d1()
     .prepare(
       `insert into assets (user_id, article_id, id, mime, data, updated_at) values (?, ?, ?, ?, ?, ${NOW})
        on conflict (user_id, article_id, id) do update set mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at`
     )
-    .bind(userId, articleId, id, mime, bytesToBase64(data))
+    .bind(userId, articleId, id, mime, encoded)
     .run();
 }
 
@@ -281,59 +282,76 @@ async function ensureSessionsTable(): Promise<void> {
   await sessionsTableReady;
 }
 
+const isMissingSessionsTable = (error: unknown) =>
+  /no such table:\s*sessions/i.test(error instanceof Error ? error.message : String(error));
+
+async function withSessionsTable<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!isMissingSessionsTable(error)) throw error;
+    await ensureSessionsTable();
+    return run();
+  }
+}
+
 export async function createSession(
   hash: string,
   user: { userId: string; email: string; name: string; picture?: string },
   expiresAt: string
 ): Promise<void> {
-  await ensureSessionsTable();
-  const database = d1();
-  await database.batch([
-    database.prepare(`delete from sessions where expires_at <= ${NOW}`),
-    database
-      .prepare(
-        `insert into sessions (hash, user_id, email, name, picture, created_at, last_seen_at, expires_at)
-         values (?, ?, ?, ?, ?, ${NOW}, ${NOW}, ?)
-         on conflict (hash) do update set
-           user_id = excluded.user_id,
-           email = excluded.email,
-           name = excluded.name,
-           picture = excluded.picture,
-           last_seen_at = excluded.last_seen_at,
-           expires_at = excluded.expires_at`
-      )
-      .bind(hash, user.userId, user.email, user.name, user.picture ?? null, expiresAt),
-  ]);
+  await withSessionsTable(async () => {
+    const database = d1();
+    await database.batch([
+      database.prepare(`delete from sessions where expires_at <= ${NOW}`),
+      database
+        .prepare(
+          `insert into sessions (hash, user_id, email, name, picture, created_at, last_seen_at, expires_at)
+           values (?, ?, ?, ?, ?, ${NOW}, ${NOW}, ?)
+           on conflict (hash) do update set
+             user_id = excluded.user_id,
+             email = excluded.email,
+             name = excluded.name,
+             picture = excluded.picture,
+             last_seen_at = excluded.last_seen_at,
+             expires_at = excluded.expires_at`
+        )
+        .bind(hash, user.userId, user.email, user.name, user.picture ?? null, expiresAt),
+    ]);
+  });
 }
 
 export async function loadSession(hash: string): Promise<SessionRecord | null> {
-  await ensureSessionsTable();
-  const row = await d1()
-    .prepare(`select user_id, email, name, picture, last_seen_at, expires_at from sessions where hash = ? and expires_at > ${NOW}`)
-    .bind(hash)
-    .first<{ user_id: string; email: string; name: string; picture: string | null; last_seen_at: string; expires_at: string }>();
-  if (!row) return null;
-  return {
-    userId: String(row.user_id),
-    email: String(row.email),
-    name: String(row.name),
-    ...(row.picture ? { picture: String(row.picture) } : {}),
-    lastSeenAt: String(row.last_seen_at),
-    expiresAt: String(row.expires_at),
-  };
+  return withSessionsTable(async () => {
+    const row = await d1()
+      .prepare(`select user_id, email, name, picture, last_seen_at, expires_at from sessions where hash = ? and expires_at > ${NOW}`)
+      .bind(hash)
+      .first<{ user_id: string; email: string; name: string; picture: string | null; last_seen_at: string; expires_at: string }>();
+    if (!row) return null;
+    return {
+      userId: String(row.user_id),
+      email: String(row.email),
+      name: String(row.name),
+      ...(row.picture ? { picture: String(row.picture) } : {}),
+      lastSeenAt: String(row.last_seen_at),
+      expiresAt: String(row.expires_at),
+    };
+  });
 }
 
 export async function touchSession(hash: string, expiresAt: string): Promise<void> {
-  await ensureSessionsTable();
-  await d1()
-    .prepare(`update sessions set last_seen_at = ${NOW}, expires_at = ? where hash = ? and expires_at > ${NOW}`)
-    .bind(expiresAt, hash)
-    .run();
+  await withSessionsTable(async () => {
+    await d1()
+      .prepare(`update sessions set last_seen_at = ${NOW}, expires_at = ? where hash = ? and expires_at > ${NOW}`)
+      .bind(expiresAt, hash)
+      .run();
+  });
 }
 
 export async function deleteSession(hash: string): Promise<void> {
-  await ensureSessionsTable();
-  await d1().prepare("delete from sessions where hash = ?").bind(hash).run();
+  await withSessionsTable(async () => {
+    await d1().prepare("delete from sessions where hash = ?").bind(hash).run();
+  });
 }
 
 /* ---------- the library, for an agent ---------- */
@@ -358,12 +376,18 @@ export async function shelfOf(userId: string): Promise<ShelfRow[]> {
 
 /** Put one imported text on a reader's shelf, as their browser would: the next sync brings it down. */
 export async function shelveForUser(userId: string, item: { id: string }, doc: unknown): Promise<void> {
+  let serialized = JSON.stringify(doc);
+  if (serialized.length > 700_000) {
+    const packed = JSON.stringify({ __gz: bytesToBase64(gzipSync(new TextEncoder().encode(serialized))) });
+    if (packed.length <= 950_000) serialized = packed;
+    else serialized = "";
+  }
   await d1()
     .prepare(
       `insert into articles (user_id, id, article_id, data, doc, deleted, updated_at) values (?, ?, ?, ?, ?, 0, ${NOW})
        on conflict (user_id, id) do update set data = excluded.data, doc = excluded.doc, deleted = 0, updated_at = excluded.updated_at`
     )
-    .bind(userId, item.id, item.id, json(item), JSON.stringify(doc))
+    .bind(userId, item.id, item.id, json(item), serialized || null)
     .run();
 }
 

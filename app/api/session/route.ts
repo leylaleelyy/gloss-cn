@@ -32,7 +32,12 @@ export async function GET(req: Request) {
   }
 
   const hash = hashSessionToken(token);
-  const record = await loadSession(hash).catch(() => null);
+  let record;
+  try {
+    record = await loadSession(hash);
+  } catch {
+    return Response.json({ error: "Session storage temporarily unavailable." }, { status: 503, headers: NO_STORE });
+  }
   if (!record) {
     cookieStore.set(SESSION_COOKIE, "", clearedSessionCookieOptions(secure));
     return Response.json({ user: null }, { headers: NO_STORE });

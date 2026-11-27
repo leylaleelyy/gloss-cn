@@ -182,12 +182,13 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
     const centerX = rects.length > 1 ? (Math.min(...rects.map((r) => r.left)) + Math.max(...rects.map((r) => r.right))) / 2 : (first.left + first.right) / 2;
     const anchorX = rects.length > 1 ? first.left + Math.min(40, first.width / 2) : centerX;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
-    // On touch, a live selection brings the system's own menu, which sits above or below the
-    // text depending on the OS version. So the lens docks at the foot of the screen instead.
-    if (coarse && l.mode === "actions" && !l.highlightId) {
+    // On touch, dock live selections at the foot of the visual viewport (avoiding the OS callout),
+    // and keep ask/note dialogs above the virtual keyboard instead of behind it.
+    if (coarse && ((l.mode === "actions" && !l.highlightId) || l.mode === "ask" || l.mode === "note")) {
       const vv = window.visualViewport;
       const x = Math.max(12, (vw - w) / 2);
-      setPos({ x, y: (vv ? vv.offsetTop + vv.height : window.innerHeight) - h - 16, below: false, arrow: 0, docked: true });
+      const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      setPos({ x, y: Math.max(12, bottom - h - 20), below: false, arrow: 0, docked: true });
       return;
     }
     let below = coarse || first.top - h - 12 < 64;
@@ -487,8 +488,8 @@ export function Lens({ rootEl, openHighlight }: { rootEl: HTMLElement | null; op
                     <span aria-hidden className="absolute -bottom-[3px] -right-[3px] size-[7px] rounded-full ring-2 ring-[var(--lens-bg)]" style={{ background: markerColor }} />
                   </span>
                 </LensIcon>
-                {/* The rings need room: the clip box is padded, and opens to the padded width. */}
-                <div className="h-8 w-0 overflow-hidden transition-[width] duration-300 ease-[var(--ease-out)] group-focus-within/hl:w-[94px] group-hover/hl:w-[94px]">
+                {/* The rings need room: on touch show them inline so colours are reachable without hover. */}
+                <div className="h-8 w-[94px] overflow-hidden transition-[width] duration-300 ease-[var(--ease-out)] [@media(hover:hover)_and_(pointer:fine)]:w-0 [@media(hover:hover)_and_(pointer:fine)]:group-focus-within/hl:w-[94px] [@media(hover:hover)_and_(pointer:fine)]:group-hover/hl:w-[94px]">
                   <div className="flex h-full w-[94px] items-center gap-2 px-2">
                   {MARKERS.map((m) => (
                     <button

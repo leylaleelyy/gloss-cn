@@ -51,16 +51,28 @@ export async function epubToArticle(file: File, onProgress?: (fraction: number, 
   if (!spine.length) throw new Error("This EPUB has no reading order.");
   const encrypted = new Set(archive["META-INF/encryption.xml"]
     ? elements(xml(read("META-INF/encryption.xml")), "CipherReference").map((node) => pathOf(node.getAttribute("URI") || "")) : []);
-  const pictures = new Map<string, string>();
+  const imageMime = new Map<string, string>();
   for (const item of manifest.values()) {
     const mime = item.getAttribute("media-type") || "";
     if (!IMAGE_TYPES.has(mime)) continue;
     const path = pathOf(item.getAttribute("href") || "", packagePath);
-    if (archive[path] && !encrypted.has(path)) pictures.set(path, dataUrl(archive[path], mime));
+    if (archive[path] && !encrypted.has(path)) imageMime.set(path, mime);
   }
+  const encodedPictures = new Map<string, string>();
+  const pictureOf = (path: string): string | undefined => {
+    const cached = encodedPictures.get(path);
+    if (cached) return cached;
+    const mime = imageMime.get(path);
+    const raw = mime ? archive[path] : undefined;
+    if (!mime || !raw) return undefined;
+    const encoded = dataUrl(raw, mime);
+    encodedPictures.set(path, encoded);
+    delete archive[path];
+    return encoded;
+  };
   const coverId = elements(pack, "meta").find((node) => node.getAttribute("name") === "cover")?.getAttribute("content");
   const cover = Array.from(manifest.values()).find((node) => (node.getAttribute("properties") || "").split(/\s+/).includes("cover-image")) ?? manifest.get(coverId || "");
-  const image = cover ? pictures.get(pathOf(cover.getAttribute("href") || "", packagePath)) : undefined;
+  const image = cover ? pictureOf(pathOf(cover.getAttribute("href") || "", packagePath)) : undefined;
   const blocks: Block[] = [];
   const chapterStarts = new Map<string, string>();
   for (let index = 0; index < spine.length; index++) {
@@ -75,13 +87,14 @@ export async function epubToArticle(file: File, onProgress?: (fraction: number, 
     const path = pathOf(item.getAttribute("href") || "", packagePath);
     if (encrypted.has(path)) throw new Error("This EPUB is DRM-protected. Import an unencrypted EPUB instead.");
     const { document } = parseHTML(read(path));
+    delete archive[path];
     // Parse only; scripts and book styles are never executed or inserted into the app.
     for (const node of document.querySelectorAll("script,style,iframe,object,embed,form")) node.remove();
     const embedded = new Map<string, string>();
     for (const img of document.querySelectorAll("img")) {
       try {
         const local = pathOf(img.getAttribute("src") || "", path);
-        const picture = pictures.get(local);
+        const picture = pictureOf(local);
         if (!picture) { img.remove(); continue; }
         const token = `https://epub.invalid/${encodeURIComponent(local)}`;
         embedded.set(token, picture);

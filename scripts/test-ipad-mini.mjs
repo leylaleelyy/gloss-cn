@@ -39,6 +39,13 @@ for(const [width,height] of (process.argv.includes('--keyboard-only') ? [] : [[7
  assert.ok(docked.bottomGap>=12&&docked.bottomGap<=32,'Composer must stay pinned to bottom while scrolled: '+JSON.stringify({width,height,docked}));
  assert.ok(docked.centerDelta<=2,'Composer must stay centered over the reading column: '+JSON.stringify({width,height,docked}));
  await evaluate('window.scrollTo(0,0)');await sleep(100);
+ if(width===1133&&height===744) {
+  await evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'f',bubbles:true}))`);await sleep(120);
+  const focusedLayout=await evaluate(`(()=>{const m=document.querySelector('.rg-margin'), p=document.querySelector('.prose-read').getBoundingClientRect();return {marginDisplay:getComputedStyle(m).display,left:p.left,right:innerWidth-p.right}})()`);
+  assert.equal(focusedLayout.marginDisplay,'none','Focus mode must hide margin on landscape tablet: '+JSON.stringify(focusedLayout));
+  assert.ok(Math.abs(focusedLayout.left-focusedLayout.right)<2,'Focus mode must center prose on landscape tablet: '+JSON.stringify(focusedLayout));
+  await evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);await sleep(120);
+ }
  await evaluate(`document.querySelector('button[aria-label="Appearance and answers"]').click()`);
  await until(`!!document.querySelector('[role="dialog"][aria-label="Appearance and answers"]')`);
  await evaluate(`Array.from(document.querySelectorAll('[role="radio"]')).find(e=>e.textContent==='Look').click()`);await sleep(100);

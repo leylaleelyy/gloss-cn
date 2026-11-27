@@ -42,6 +42,9 @@ export async function POST(req: Request) {
     { role: 'user', content: passages },
   ] });
   if (!result.ok) return Response.json({ error: result.error }, { status: 502 });
-  const rows = Array.isArray(result.data?.passages) ? result.data.passages : [];
-  return Response.json({ passages: texts.map((text, index) => cleanWords(rows[index]?.words, text, level)) });
+  if (!Array.isArray(result.data?.passages) || result.data.passages.length !== texts.length) {
+    return Response.json({ passages: null });
+  }
+  const rows = result.data.passages;
+  return Response.json({ passages: texts.map((text, index) => Array.isArray(rows[index]?.words) ? cleanWords(rows[index].words, text, level) : null) });
 }

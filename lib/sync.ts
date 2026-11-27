@@ -130,8 +130,10 @@ function snapshot(): Snapshot {
   }
   for (const [aid, p] of Object.entries(st.progress)) put("progress", aid, aid, p);
   const learning = useLearning.getState();
-  for (const entry of learning.entries) put("vocabulary", entry.id, "vocabulary", entry);
-  if (learning.ready) put("learning", "preferences", "learning", learning.preferences);
+  if (!learning.error) {
+    for (const entry of learning.entries) put("vocabulary", entry.id, "vocabulary", entry);
+    if (learning.ready) put("learning", "preferences", "learning", learning.preferences);
+  }
   if (st.hydrated) put("settings", "preferences", "settings", localSyncedSettings());
   return { entities, busy };
 }
@@ -179,15 +181,16 @@ export function startSync(userId: string) {
   };
 
   let stopped = false;
-  let deletionsApproved = false;
   // One operation at a time: a pull never lands in the middle of a push.
   let chain: Promise<unknown> = Promise.resolve();
   const serial = (fn: () => Promise<void>) => (chain = chain.then(() => (stopped ? undefined : fn())).catch(() => {}));
 
   async function push() {
     setSyncStatus("syncing");
+    let deletionsApproved = false;
     try {
     const { entities, busy } = snapshot();
+    const learningUnavailable = Boolean(useLearning.getState().error);
     const pendingDeletes = pendingArticleDeletions();
     const rows: { c: Collection; row: OutRow; key: string | null; size: number; docState?: 0 | 1 | 2; docAt?: number }[] = [];
     for (const c of COLLECTIONS) {
@@ -232,6 +235,8 @@ export function startSync(userId: string) {
       }
       for (const [id, [, articleId]] of Object.entries(seen)) {
         if (entities[c].has(id) || busy.has(`${c}:${id}`)) continue;
+        // Never wipe cloud vocabulary when local IndexedDB failed to open.
+        if ((c === "vocabulary" || c === "learning") && learningUnavailable) continue;
         // Only books the reader actually removed become tombstones. A shelf that
         // failed to load must never wipe the account's library.
         if (c === "articles" && !pendingDeletes.has(id)) continue;
@@ -239,7 +244,7 @@ export function startSync(userId: string) {
       }
     }
     if (!rows.length) {
-      clearArticleDeletions(pendingDeletes);
+      clearArticleDeletions([...pendingDeletes].filter((id) => !entities.articles.has(id)));
       setSyncStatus("synced");
       return;
     }
@@ -340,8 +345,10 @@ export function startSync(userId: string) {
         else if (!e) continue;
         else if (c === "articles") {
           const data = r.data as { docAt?: number; origin?: string } | null;
-          // `hasDoc` is the account's copy: a synced text, or a long one left behind.
-          const doc = r.hasDoc ? 1 : data?.origin === "sample" ? 0 : 2;
+          // `hasDoc`: 1 when the account already holds the text; otherwise leave undecided (0)
+          // so a device that imports the file later can still upload a short text.
+          const prevDoc = base.seen.articles[r.id]?.[2];
+          const doc = r.hasDoc ? 1 : prevDoc === 2 ? 2 : 0;
           base.seen[c][r.id] = [e.key, e.articleId, doc, data?.docAt];
         } else {
           base.seen[c][r.id] = [e.key, e.articleId];

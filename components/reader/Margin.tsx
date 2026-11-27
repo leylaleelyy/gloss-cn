@@ -113,25 +113,45 @@ function MarginImpl({
     raf.current = requestAnimationFrame(compute);
   }, [compute]);
 
+  const scheduleRef = useRef(schedule);
+  scheduleRef.current = schedule;
+  const roRef = useRef<ResizeObserver | null>(null);
+
   useLayoutEffect(() => {
     compute();
   }, [compute, size, layout.mini]);
 
+  // Keep a single ResizeObserver across streaming token flushes instead of tearing down and re-observing every card at 20fps.
   useEffect(() => {
-    const ro = new ResizeObserver(schedule);
+    const onResize = () => scheduleRef.current();
+    const ro = new ResizeObserver(onResize);
+    roRef.current = ro;
     if (articleEl) {
       ro.observe(articleEl);
       if (articleEl.parentElement) ro.observe(articleEl.parentElement);
     }
     for (const el of cards.current.values()) ro.observe(el);
-    window.addEventListener("resize", schedule);
-    document.fonts?.ready.then(schedule).catch(() => {});
+    window.addEventListener("resize", onResize);
+    document.fonts?.ready.then(onResize).catch(() => {});
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", schedule);
+      roRef.current = null;
+      window.removeEventListener("resize", onResize);
       cancelAnimationFrame(raf.current);
     };
-  }, [schedule, compute, articleEl, glosses, notes]);
+  }, [articleEl]);
+
+  const bindCard = useCallback((id: string) => (el: HTMLElement | null) => {
+    const prev = cards.current.get(id);
+    if (prev === el) return;
+    if (prev) roRef.current?.unobserve(prev);
+    if (el) {
+      cards.current.set(id, el);
+      roRef.current?.observe(el);
+    } else {
+      cards.current.delete(id);
+    }
+  }, []);
 
   const lead = [active, hover && hover !== active ? hover : null].filter((x): x is string => Boolean(x && layout.tops[x] !== undefined));
 
@@ -158,10 +178,7 @@ function MarginImpl({
       {glosses.map((g) => (
         <GlossCard
           key={g.id}
-          ref={(el) => {
-            if (el) cards.current.set(g.id, el);
-            else cards.current.delete(g.id);
-          }}
+          ref={bindCard(g.id)}
           gloss={g}
           variant="margin"
           top={layout.tops[g.id]}
@@ -177,10 +194,7 @@ function MarginImpl({
       {notes.map((h) => (
         <NoteCard
           key={h.id}
-          ref={(el) => {
-            if (el) cards.current.set(h.id, el);
-            else cards.current.delete(h.id);
-          }}
+          ref={bindCard(h.id)}
           note={h}
           top={layout.tops[h.id]}
           fresh={!placed.current.has(h.id)}

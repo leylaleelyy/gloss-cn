@@ -23,7 +23,8 @@ export async function POST(req: Request) {
   const headerKey = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim();
   // Reading aloud is never on the shared key: a minute of voice costs more than a day of free answers.
   const apiKey = body.apiKey?.trim() || headerKey || undefined;
-  const provider = await getProvider();
+  const loaded = await getProvider();
+  const provider = apiKey && !loaded.apiKey ? { ...loaded, apiKey } : loaded;
   if (!provider.speechModel || !provider.speechVoice) return needKey(null, "Set a speech model and voice in AI settings to read aloud.");
 
   let res: Response;

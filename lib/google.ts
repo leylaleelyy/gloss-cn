@@ -20,8 +20,8 @@ type GoogleClaims = {
 type Jwk = JsonWebKey & { kid?: string };
 let keys: { at: number; value: Jwk[] } | null = null;
 
-async function googleKeys(): Promise<Jwk[]> {
-  if (keys && Date.now() - keys.at < 3_600_000) return keys.value;
+async function googleKeys(force = false): Promise<Jwk[]> {
+  if (!force && keys && Date.now() - keys.at < 3_600_000) return keys.value;
   const res = await fetch("https://www.googleapis.com/oauth2/v3/certs", { cache: "no-store" });
   if (!res.ok) throw new Error("Could not fetch Google keys.");
   const body = (await res.json()) as { keys?: Jwk[] };
@@ -64,7 +64,12 @@ export async function verifyGoogleIdToken(token: string): Promise<{ userId: stri
   if (!claims.sub || !claims.email || !claims.exp || claims.exp * 1000 <= Date.now()) return null;
   if (claims.email_verified === false) return null;
 
-  const jwk = (await googleKeys()).find((key) => key.kid === header.kid);
+  const currentKeys = await googleKeys();
+  let jwk = currentKeys.find((key) => key.kid === header.kid);
+  // Refresh once on an unknown kid so Google key rotations do not break sign-in for an hour.
+  if (!jwk && keys && Date.now() - keys.at > 30_000) {
+    jwk = (await googleKeys(true)).find((key) => key.kid === header.kid);
+  }
   if (!jwk) return null;
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, bytes(signature), new TextEncoder().encode(`${head}.${payload}`));

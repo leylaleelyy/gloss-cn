@@ -48,7 +48,8 @@ export async function POST(req: Request) {
   if (!(await providerConfigured())) return needKey(null);
 
   const layout = body.mode === "layout";
-  const provider = visionProvider(await getProvider());
+  const loaded = visionProvider(await getProvider());
+  const provider = own && !loaded.apiKey ? { ...loaded, apiKey: own } : loaded;
   const model = provider.visionModel || provider.model;
 
   let res: Response;

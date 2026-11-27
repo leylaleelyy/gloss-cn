@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { clearWiseHints, getWiseHints, setWiseHints, subscribeWiseHints } from '@/lib/word-wise-store';
 import { create } from 'zustand';
 import { useLearning, setLearning } from '@/lib/learning-store';
@@ -54,6 +54,18 @@ export function WordWiseControl() {
     </Popover>}
   </div>;
 }
+function fallbackHash(input: string): string {
+  let h1 = 0xdeadbeef ^ input.length, h2 = 0x41c6ce57 ^ input.length;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+}
+
 export function WordWise({ root }: { root: HTMLElement | null }) {
   const { ix } = useReader();
   const prefs = useLearning(s => s.preferences);
@@ -61,6 +73,18 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
   const ready = useLearning(s => s.ready);
   const on = useWordWise(ix.article.id);
   const [revision, setRevision] = useState(0);
+  const computerRef = useRef<ReturnType<typeof acquireVocabularyComputer>['computer'] | null>(null);
+  const rehintRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!on || !root || !ready) { computerRef.current = null; return; }
+    const { computer, release } = acquireVocabularyComputer(entries);
+    computerRef.current = computer;
+    rehintRef.current?.();
+    return () => {
+      if (computerRef.current === computer) computerRef.current = null;
+      release();
+    };
+  }, [on, root, ready, entries]);
   useEffect(() => {
     if (!root || !on) return;
     const open = (event: MouseEvent | KeyboardEvent) => {
@@ -97,7 +121,6 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
     if (!on || !root || !ready) return;
     let stopped = false, busy = false, failed = false;
     const controller = new AbortController(), visible = new Set<string>(), done = new Set<string>();
-    const { computer, release } = acquireVocabularyComputer(entries);
     const positions = new Map<string, number>();
     let lastScroll = 0;
     const onScroll = () => { lastScroll = performance.now(); };
@@ -106,14 +129,31 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
     const blocks = new Map(ix.article.blocks.map(b => [b.id, b]));
     let timer: ReturnType<typeof setTimeout>;
     const apply = async (id: string, text: string, words: WiseWord[]) => {
+      const computer = computerRef.current;
+      if (!computer) return;
       const hints = await computer.hints(text, words, controller.signal);
       if (!stopped) setWiseHints(id, hints);
+    };
+    rehintRef.current = () => {
+      for (const id of visible) {
+        const block = blocks.get(id);
+        if (!block) continue;
+        const fullText = block.runs.map(r => r.text).join('');
+        void apply(id, fullText, progress.get(id)?.words ?? []).catch(() => {});
+      }
     };
     const BATCH = 4;
     const cacheKey = async (text: string) => {
       const provider = readProvider();
-      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`v4:${provider.baseUrl}:${provider.model}:${prefs.level}:${text}`));
-      return new URL('/__word-wise/' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join(''), location.origin).href;
+      const raw = `v4:${provider.baseUrl}:${provider.model}:${prefs.level}:${text}`;
+      let hex: string;
+      if (typeof crypto !== 'undefined' && crypto.subtle) {
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+        hex = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+      } else {
+        hex = `f-${fallbackHash(raw)}`;
+      }
+      return new URL('/__word-wise/' + hex, location.origin).href;
     };
     const pump = async () => {
       if (stopped || busy) return;
@@ -144,6 +184,7 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
             const words = found.get(job.key);
             if (words !== undefined) {
               job.part.words.push(...words);
+              progress.set(job.id, { offset: job.end, words: job.part.words });
               await apply(job.id, job.fullText, job.part.words);
             }
           }
@@ -151,7 +192,10 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
         for (const job of jobs) {
           if (job.end < job.fullText.length) { progress.set(job.id, { offset: job.end, words: job.part.words }); done.delete(job.id); }
         }
-      } catch (e) { if (!stopped) { failed = true; useWise.setState({ error: e instanceof Error ? e.message : '释义生成失败' }); } }
+      } catch (e) {
+        for (const job of jobs) done.delete(job.id);
+        if (!stopped) { failed = true; useWise.setState({ error: e instanceof Error ? e.message : '释义生成失败' }); }
+      }
       finally { busy = false; if (!stopped) { useWise.setState({ loading: false }); timer = setTimeout(pump, 40); } }
     };
     const observer = new IntersectionObserver(changes => {
@@ -163,7 +207,7 @@ export function WordWise({ root }: { root: HTMLElement | null }) {
       clearTimeout(timer); timer = setTimeout(pump, 120);
     }, { rootMargin: '800px' });
     root.querySelectorAll<HTMLElement>('[data-block]').forEach(el => { if (['p', 'li', 'quote', 'note'].includes(blocks.get(el.dataset.block!)?.type || '')) observer.observe(el); });
-    return () => { stopped = true; window.removeEventListener('scroll', onScroll); clearTimeout(timer); controller.abort(); release(); observer.disconnect(); clearWiseHints(); useWise.setState({ loading: false }); };
-  }, [ix, root, on, ready, prefs.level, entries, revision]);
+    return () => { stopped = true; rehintRef.current = null; window.removeEventListener('scroll', onScroll); clearTimeout(timer); controller.abort(); observer.disconnect(); clearWiseHints(); useWise.setState({ loading: false }); };
+  }, [ix, root, on, ready, prefs.level, revision]);
   return null;
 }

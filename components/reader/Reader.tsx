@@ -244,6 +244,15 @@ function ReaderInner({ article }: { article: Article }) {
 
   /* ---------------- marks per block ---------------- */
 
+  // Streaming answer text updates `glosses` at 20fps without changing any anchor.
+  // Keep a structural key so long books do not re-render thousands of blocks on every token.
+  const glossMarkKey = useMemo(
+    () => glosses.map((g) => `${g.id}:${g.action}:${g.at ?? ""}:${g.anchor ? `${g.anchor.start.b}.${g.anchor.start.o}-${g.anchor.end.b}.${g.anchor.end.o}` : ""}`).join("|"),
+    [glosses]
+  );
+  const glossRef = useRef(glosses);
+  glossRef.current = glosses;
+
   const marksByBlock = useMemo(() => {
     const map = new Map<string, Mark[]>();
     const add = (blockId: string, m: Mark) => {
@@ -261,14 +270,15 @@ function ReaderInner({ article }: { article: Article }) {
       }
     };
     for (const h of highlights) place(h.anchor, "hl", h.id, h.color, Boolean(h.note));
-    for (const g of glosses) if (g.anchor) place(g.anchor, "gloss", g.id, g.action === "simplify" ? "analysis" : g.action === "define" ? "dictionary" : g.action === "ask" ? "ask" : undefined);
+    for (const g of glossRef.current) if (g.anchor) place(g.anchor, "gloss", g.id, g.action === "simplify" ? "analysis" : g.action === "define" ? "dictionary" : g.action === "ask" ? "ask" : undefined);
     if (pending) place(pending, "pending", "pending");
     return map;
-  }, [glosses, highlights, pending, ix, article.blocks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glossMarkKey, highlights, pending, ix, article.blocks]);
 
   const notes = useMemo(() => highlights.filter((h) => h.note), [highlights]);
   const openNote = useCallback((h: { id: string; anchor: Anchor }) => setOpenHl({ id: h.id, anchor: h.anchor, at: Date.now(), note: true }), []);
-  const atBlocks = useMemo(() => new Set(glosses.filter((g) => !g.anchor && g.at).map((g) => g.at!)), [glosses]);
+  const atBlocks = useMemo(() => new Set(glossRef.current.filter((g) => !g.anchor && g.at).map((g) => g.at!)), [glossMarkKey]);
   // The drop cap goes on the first real paragraph, not a one-line caption or credit.
   const firstPara = useMemo(() => article.blocks.find((b) => b.type === "p" && (ix.texts.get(b.id)?.length ?? 0) >= 180)?.id, [article.blocks, ix]);
 
@@ -509,8 +519,8 @@ function ReaderInner({ article }: { article: Article }) {
         }
         return;
       }
-      const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, select, [contenteditable]")) return;
+      const t = e.target;
+      if (t instanceof Element && t.closest("input, textarea, select, [contenteditable]")) return;
       const sel = window.getSelection();
       const hasSel = sel && !sel.isCollapsed;
       const st = useStore.getState();

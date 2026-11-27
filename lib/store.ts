@@ -460,7 +460,19 @@ export const useStore = create<State>((set, get) => ({
   removeFromLibrary: (id) => {
     markArticleDeleted(id);
     void dropDoc(id);
-    set((st) => ({ library: st.library.filter((x) => x.id !== id) }));
+    set((st) => {
+      const rest = <T,>(m: Record<string, T>) => {
+        if (!(id in m)) return m;
+        const next = { ...m };
+        delete next[id];
+        return next;
+      };
+      return {
+        library: st.library.filter((x) => x.id !== id),
+        briefs: rest(st.briefs),
+        progress: rest(st.progress),
+      };
+    });
   },
 
   // Part of a text read again (a page swapped in by lib/upgrade.ts) where no mark is anchored:
@@ -677,20 +689,33 @@ function idb(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => {
       for (const name of [DOCS, FILES]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name);
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const conn = req.result;
+      conn.onclose = () => { dbp = null; };
+      conn.onversionchange = () => { conn.close(); dbp = null; };
+      resolve(conn);
+    };
+    req.onerror = () => { dbp = null; reject(req.error); };
   });
   dbp.catch(() => (dbp = null));
   return dbp;
 }
 
-async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = DOCS): Promise<T> {
-  const db = await idb();
-  return new Promise((resolve, reject) => {
-    const req = fn(db.transaction(store, mode).objectStore(store));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>, store = DOCS, retry = true): Promise<T> {
+  try {
+    const db = await idb();
+    return await new Promise((resolve, reject) => {
+      const req = fn(db.transaction(store, mode).objectStore(store));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    if (retry && err instanceof DOMException && err.name === "InvalidStateError") {
+      dbp = null;
+      return tx(mode, fn, store, false);
+    }
+    throw err;
+  }
 }
 
 export async function saveDoc(a: Article): Promise<boolean> {

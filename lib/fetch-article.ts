@@ -19,11 +19,23 @@ const MAX_PDF_BYTES = 25_000_000;
 const MIN_WORDS = 80;
 
 /** Refuse anything that resolves to a private, loopback or link-local address. */
-function isPrivate(ip: string): boolean {
-  if (ip === "::1" || ip === "::" || ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80")) return true;
-  const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+function isPrivate(rawIp: string): boolean {
+  const ip = rawIp.toLowerCase();
+  if (ip === "::1" || ip === "::" || ip.startsWith("fc") || ip.startsWith("fd") || /^fe[89ab]/.test(ip)) return true;
+  let v4 = ip;
+  if (ip.startsWith("::ffff:")) {
+    const rest = ip.slice(7);
+    const hexMatch = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(rest);
+    if (hexMatch) {
+      const hi = parseInt(hexMatch[1], 16);
+      const lo = parseInt(hexMatch[2], 16);
+      v4 = `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+    } else {
+      v4 = rest;
+    }
+  }
   const p = v4.split(".").map(Number);
-  if (p.length !== 4) return false;
+  if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
   return (
     p[0] === 10 ||
     p[0] === 127 ||
@@ -33,6 +45,43 @@ function isPrivate(ip: string): boolean {
     (p[0] === 192 && p[1] === 168) ||
     (p[0] === 100 && p[1] >= 64 && p[1] <= 127)
   );
+}
+
+/** Stream a response body up to `maxBytes` so huge remote files never OOM the Worker. */
+async function readBounded(res: Response, maxBytes: number): Promise<ArrayBuffer | null> {
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) {
+    void res.body?.cancel();
+    return null;
+  }
+  if (!res.body) {
+    const buf = await res.arrayBuffer();
+    return buf.byteLength > maxBytes ? null : buf;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer;
 }
 
 async function safeUrl(raw: string): Promise<URL | string> {
@@ -169,6 +218,7 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
       });
       const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
       if (!location) break;
+      void res.body?.cancel();
       const next = await safeUrl(new URL(location, target).toString());
       if (typeof next === "string") return { ok: false, error: next, status: 400 };
       target = next;
@@ -189,25 +239,26 @@ export async function fetchArticle(raw: string, opts: { pdf?: boolean } = {}): P
 
   const type = res.headers.get("content-type") ?? "";
   if (type.includes("application/epub+zip") || /\.epub$/i.test(target.pathname)) {
-    if (!opts.pdf) return { ok: false, error: "Download this EPUB and open it in Gloss.", status: 415 };
-    const epub = await res.arrayBuffer();
-    if (epub.byteLength > MAX_PDF_BYTES) return { ok: false, error: "That EPUB is too large to fetch here. Download it and open the local file instead.", status: 413 };
+    if (!opts.pdf) { void res.body?.cancel(); return { ok: false, error: "Download this EPUB and open it in Gloss.", status: 415 }; }
+    const epub = await readBounded(res, MAX_PDF_BYTES);
+    if (!epub) return { ok: false, error: "That EPUB is too large to fetch here. Download it and open the local file instead.", status: 413 };
     const name = decodeURIComponent(target.pathname.split("/").pop() || "book.epub");
     return { ok: true, epub, name: name.toLowerCase().endsWith(".epub") ? name : `${name}.epub` };
   }
   if (type.includes("application/pdf") && opts.pdf) {
-    const pdf = await res.arrayBuffer();
-    if (pdf.byteLength > MAX_PDF_BYTES) return { ok: false, error: "That PDF is too large to import.", status: 413 };
+    const pdf = await readBounded(res, MAX_PDF_BYTES);
+    if (!pdf) return { ok: false, error: "That PDF is too large to import.", status: 413 };
     const name = decodeURIComponent(target.pathname.split("/").pop() || "document.pdf");
     return { ok: true, pdf, name: name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf` };
   }
   if (type.includes("application/pdf")) {
+    void res.body?.cancel();
     return { ok: false, error: "That link is a PDF. Download it, then drop the file here.", status: 415 };
   }
-  if (!type.includes("html")) return { ok: false, error: "That link is not a web page.", status: 415 };
+  if (!type.includes("html")) { void res.body?.cancel(); return { ok: false, error: "That link is not a web page.", status: 415 }; }
 
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_BYTES) return { ok: false, error: "That page is too large to import.", status: 413 };
+  const buf = await readBounded(res, MAX_BYTES);
+  if (!buf) return { ok: false, error: "That page is too large to import.", status: 413 };
   const html = new TextDecoder().decode(buf);
 
   const { document } = parseHTML(html);
