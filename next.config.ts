@@ -6,6 +6,9 @@ initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   ...(process.env.GLOSS_DESKTOP === "1" ? { output: "standalone", distDir: ".next-desktop" } as const : {}),
+  experimental: {
+    agentUpgrade: "security",
+  },
   serverExternalPackages: ["linkedom"],
   poweredByHeader: false,
   async headers() {
